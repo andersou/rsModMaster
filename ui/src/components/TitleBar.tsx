@@ -1,12 +1,13 @@
 import { Show } from 'solid-js';
 import { api } from '../api';
 import { app } from '../appStore';
-import { LOCALES, locale, setLocale, t } from '../i18n';
+import { t } from '../i18n';
 import { panel } from '../panel';
 import { setThemePref, themePref } from '../theme';
 import { updates } from '../updates';
 import { Segmented } from './Segmented';
 import { Icon } from './Icon';
+import { LanguageMenu } from './LanguageMenu';
 
 function Action(props: { icon: string; label: string; disabled?: boolean; onClick: () => void }) {
   return (
@@ -51,12 +52,7 @@ export function TitleBar() {
         <Action icon="info" label={t('titlebar.about')} onClick={() => app.setDialog('about')} />
       </div>
       <div class="titlebar-group">
-        <Segmented
-          label={t('language')}
-          value={locale()}
-          onChange={setLocale}
-          options={LOCALES.map((l) => ({ value: l.value, label: l.value.toUpperCase(), title: l.label }))}
-        />
+        <LanguageMenu />
         <Segmented
           label={t('titlebar.theme')}
           value={themePref()}

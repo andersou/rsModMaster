@@ -722,6 +722,9 @@ a:hover { color: var(--link-hover); }
 .legend-item:hover { background: var(--secondary-hover); }
 .legend-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legend-value { flex: none; font: 12px var(--mono); }
+/* bandeira do idioma: borda fina para a faixa branca dos EUA no tema claro */
+.flag { width: 20px; height: 14px; flex: none; border-radius: 2px; box-shadow: 0 0 0 1px var(--border); }
+.lang-menu { min-width: 160px; }
 .menu-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; }
 .menu-label { margin: 0 4px 4px; }
 .menu-label input { min-width: 0; }
