@@ -1,6 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { app } from '../appStore';
-import { type Base, type Cell, ENDIAN_LABELS, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
+import { BASE_LABELS, type Base, type Cell, ENDIAN_LABELS, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
 import { Icon } from './Icon';
 
 const COLUMNS = Array.from({ length: GRID_WIDTH }, (_, i) => String(i).padStart(2, '0'));
@@ -12,8 +12,20 @@ interface Menu {
 }
 
 /** Formato de um endereço pelo botão direito, como o menu de contexto do fModMaster. */
+const MENU_ITEMS: { label: string; base: Base; endian?: Endian }[] = [
+  { label: 'Dec', base: 'dec' },
+  { label: 'Bin', base: 'bin' },
+  { label: 'Hex', base: 'hex' },
+  ...ENDIAN_LABELS.map((label, i) => ({ label: `Float ${label}`, base: 'float' as Base, endian: i as Endian })),
+];
+
+/** Formato de um endereço pelo botão direito, como o menu de contexto do fModMaster; o formato em
+ *  vigor vem marcado. */
 function FormatMenu(props: { menu: Menu; onClose: () => void }) {
   let ref!: HTMLDivElement;
+  const current = () => app.formatAt(props.menu.address);
+  const checked = (item: (typeof MENU_ITEMS)[number]) =>
+    current().floatOwner === null && item.base === current().base && (item.base !== 'float' || item.endian === current().endian);
   const pick = (base: Base, endian?: Endian) => {
     app.setFormat(props.menu.address, base, endian);
     props.onClose();
@@ -24,41 +36,43 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
   onMount(() => {
     document.addEventListener('pointerdown', close, true);
     document.addEventListener('keydown', close, true);
-    ref.querySelector('button')?.focus();
+    (ref.querySelector<HTMLElement>('[aria-checked="true"]') ?? ref.querySelector('button'))?.focus();
   });
   onCleanup(() => {
     document.removeEventListener('pointerdown', close, true);
     document.removeEventListener('keydown', close, true);
   });
   const floatBlocked = () => app.singleRegisterWrite();
+  const state = () => {
+    const c = current();
+    if (c.floatOwner !== null) return `Second half of the float at ${c.floatOwner}`;
+    const name = MENU_ITEMS.find(checked)?.label ?? BASE_LABELS[c.base];
+    return `${name} · ${c.custom ? 'custom' : 'table default'}`;
+  };
   return (
     <div
       ref={ref}
       class="menu"
       role="menu"
-      aria-label={`Format of register ${props.menu.address}`}
-      style={{ left: `${Math.min(props.menu.x, innerWidth - 200)}px`, top: `${Math.min(props.menu.y, innerHeight - 300)}px` }}
+      aria-label={`Format of register ${props.menu.address}: ${state()}`}
+      style={{ left: `${Math.min(props.menu.x, innerWidth - 220)}px`, top: `${Math.min(props.menu.y, innerHeight - 340)}px` }}
     >
-      <div class="menu-title">Register {props.menu.address}</div>
-      <button role="menuitem" type="button" onClick={() => pick('dec')}>
-        Dec
-      </button>
-      <button role="menuitem" type="button" onClick={() => pick('bin')}>
-        Bin
-      </button>
-      <button role="menuitem" type="button" onClick={() => pick('hex')}>
-        Hex
-      </button>
-      <For each={ENDIAN_LABELS}>
-        {(label, i) => (
+      <div class="menu-title">
+        <span>Register {props.menu.address}</span>
+        <span class="menu-state">{state()}</span>
+      </div>
+      <For each={MENU_ITEMS}>
+        {(item) => (
           <button
-            role="menuitem"
+            role="menuitemradio"
+            aria-checked={checked(item)}
             type="button"
-            disabled={floatBlocked()}
-            title={floatBlocked() ? 'Float requires Write Multiple Registers (FC 10).' : undefined}
-            onClick={() => pick('float', i() as Endian)}
+            disabled={current().floatOwner !== null || (item.base === 'float' && floatBlocked())}
+            title={item.base === 'float' && floatBlocked() ? 'Float requires Write Multiple Registers (FC 10).' : undefined}
+            onClick={() => pick(item.base, item.endian)}
           >
-            Float {label}
+            <Icon name="check" class="menu-check" />
+            {item.label}
           </button>
         )}
       </For>
@@ -66,12 +80,14 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
       <button
         role="menuitem"
         type="button"
+        disabled={!current().custom}
         onClick={() => {
           app.resetFormat(props.menu.address);
           props.onClose();
         }}
       >
-        Reset to default
+        <span class="menu-check" />
+        Reset to default ({BASE_LABELS[app.form.format]})
       </button>
     </div>
   );

@@ -26,15 +26,24 @@ function onShortcut(event: KeyboardEvent) {
   }
 }
 
+/** Sem o menu nativo do WebKit (um "Reload" acidental zera a tela); fica onde há texto para copiar. */
+function onContextMenu(event: MouseEvent) {
+  if (!(event.target as Element).closest('input, textarea, pre, .log-list')) event.preventDefault();
+}
+
 /** Conexão e requisição em cima, a tabela no meio, contadores embaixo. */
 export function App() {
   onMount(async () => {
     document.addEventListener('keydown', onShortcut);
+    document.addEventListener('contextmenu', onContextMenu);
     // ouvir antes do primeiro comando: nenhum quadro do bus monitor se perde
     await api.onCoreEvents(app.onCoreEvents);
     await app.init().catch((err) => toast(String(err), 'danger'));
   });
-  onCleanup(() => document.removeEventListener('keydown', onShortcut));
+  onCleanup(() => {
+    document.removeEventListener('keydown', onShortcut);
+    document.removeEventListener('contextmenu', onContextMenu);
+  });
   return (
     <>
       <TitleBar />

@@ -271,6 +271,17 @@ export const app = {
   spec,
   quantity,
   errors,
+  /** Formato em vigor no endereço: o próprio (`custom`) ou o padrão da tabela; `floatOwner` quando
+   *  ele é a 2ª metade de um float que começa no endereço anterior. */
+  formatAt(address: number) {
+    const own = formats()[address];
+    return {
+      base: own ?? form.format,
+      endian: endians()[address] ?? toEndian(settings.floatEndian),
+      custom: own !== undefined,
+      floatOwner: formats()[address - 1] === 'float' ? address - 1 : null,
+    };
+  },
   /** Dec/Hex do endereço inicial: converte o texto, o endereço continua o mesmo. */
   setAddrHex(hex: boolean) {
     if (hex === form.addrHex) return;
