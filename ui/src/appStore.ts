@@ -21,6 +21,7 @@ import {
   functionIndex,
   functionSpec,
   type Grid,
+  type Row,
   hasFloat,
   startsInsideFloat,
   toEndian,
@@ -123,6 +124,8 @@ const spec = createMemo(() => functionSpec(form.fn));
 const startAddress = createMemo(() => Math.min(parseAddress(form.start, form.addrHex) ?? 0, 65535));
 const quantity = createMemo(() => clampQuantity(int(form.qty, spec().min), spec()));
 const singleRegisterWrite = createMemo(() => form.fn === 0x06);
+/** O gráfico é das leituras: numa função de escrita a tabela volta. */
+const showingChart = createMemo(() => view() === 'chart' && !spec().write);
 const errors = createMemo<FormErrors>(() => validateForm({ ...form, baseAddr: settings.baseAddr ?? '0', spec: spec() }));
 /** Primeiro campo inválido, avisado ao tentar ler, escrever ou escanear. */
 function blockedByForm() {
@@ -184,7 +187,7 @@ const grid = createMemo<Grid>(() => ({
 let decodeSeq = 0;
 let lastConverterError: string | undefined;
 createEffect(
-  on([() => table(), assigned, sizes, startAddress, quantity, () => spec().bits, () => form.converter], async () => {
+  on([() => table(), assigned, sizes, startAddress, quantity, () => spec().bits, () => form.converter, showingChart], async () => {
     const seq = ++decodeSeq;
     const { values, valid, at } = table();
     const start = startAddress();
@@ -196,6 +199,8 @@ createEffect(
         const size = cell.converter === undefined ? undefined : sizes()[cell.converter];
         const offset = cell.address - start;
         if (cell.kind !== 'value' || size === undefined || offset + size > values.length) continue;
+        // no gráfico só interessam as séries; a tabela inteira é decodificada ao voltar para ela
+        if (showingChart() && !charted().has(cell.address)) continue;
         items.push({ address: cell.address, id: cell.converter!, regs: values.slice(offset, offset + size) });
       }
     }
@@ -221,7 +226,9 @@ createEffect(
     }
   }),
 );
-const rows = createMemo(() => buildRows(grid()));
+// a grade só é montada com a tabela na tela: no gráfico o memo fica parado (sem custo por volta do
+// scan) e volta a calcular ao trocar de visão
+const rows = createMemo<Row[]>((previous) => (showingChart() ? previous : buildRows(grid())), []);
 const cellText = (cell: Cell) => edits[cell.address] ?? editText(cell);
 const maxLines = () => {
   const n = int(settings.maxNoOfLines, 60);
@@ -533,6 +540,7 @@ export const app = {
   clearTable,
   view,
   setView,
+  showingChart,
   chart,
   chartVersion,
   charted,

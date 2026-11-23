@@ -1,4 +1,4 @@
-import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { createSignal, For, Index, onCleanup, onMount, Show } from 'solid-js';
 import { app } from '../appStore';
 import { BASE_LABELS, type Base, type Cell, ENDIAN_LABELS, toEndian, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
 import { shortcut } from '../platform';
@@ -239,8 +239,7 @@ export function RegistersCard() {
   };
   const columns = () => (app.quantity() === 1 ? COLUMNS.slice(0, 1) : COLUMNS);
   const write = () => app.spec().write;
-  /** o gráfico é das leituras: numa função de escrita a tabela volta */
-  const chartView = () => app.view() === 'chart' && !write();
+  const chartView = app.showingChart;
   const disabled = () => !app.connected() || app.scanning() || app.busy();
   return (
     <section class="card registers" aria-labelledby="registers-title">
@@ -281,7 +280,9 @@ export function RegistersCard() {
       <Show when={chartView()}>
         <ChartView />
       </Show>
-      <div class="grid-scroll" hidden={chartView()}>
+      {/* desmontada no gráfico: nada de DOM atualizado a cada volta do scan */}
+      <Show when={!chartView()}>
+      <div class="grid-scroll">
         {/* colunas iguais e fixas: nada pula no scan; Bin pede colunas mais largas (16 dígitos) */}
         <table
           class="grid"
@@ -299,17 +300,20 @@ export function RegistersCard() {
             </tr>
           </thead>
           <tbody>
-            <For each={app.rows()}>
+            {/* Index: a cada leitura as células são objetos novos; com For todo <td> seria recriado.
+                Assim cada posição mantém o seu elemento e só o conteúdo muda. */}
+            <Index each={app.rows()}>
               {(row) => (
                 <tr>
-                  <th scope="row">{formatAddress(row.address, app.form.addrHex)}</th>
-                  <For each={row.cells}>{(cell) => <CellView cell={cell} onMenu={onMenu} />}</For>
+                  <th scope="row">{formatAddress(row().address, app.form.addrHex)}</th>
+                  <Index each={row().cells}>{(cell) => <CellView cell={cell()} onMenu={onMenu} />}</Index>
                 </tr>
               )}
-            </For>
+            </Index>
           </tbody>
         </table>
       </div>
+      </Show>
       <Show when={menu()}>{(m) => <FormatMenu menu={m()} onClose={() => setMenu(null)} />}</Show>
     </section>
   );

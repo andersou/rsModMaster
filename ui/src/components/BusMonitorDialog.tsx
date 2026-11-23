@@ -43,7 +43,8 @@ export function BusMonitorDialog() {
       <div class="bus-body">
         <div class="log-box">
           <div class="log-list" ref={list} role="listbox" aria-label="Raw Data">
-            <For each={app.raw()}>
+            {/* só com o diálogo aberto: fechado, os quadros do scan não mexem no DOM */}
+            <For each={open() ? app.raw() : []}>
               {(line) => (
                 <div
                   class={`log-row raw ${line.type.toLowerCase()}`}

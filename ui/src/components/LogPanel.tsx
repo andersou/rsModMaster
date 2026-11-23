@@ -72,7 +72,9 @@ export function LogPanel() {
   const openFile = () => api.openLog().catch((error) => toast(String(error), 'danger'));
 
   return (
-    <section class="log-panel" aria-labelledby="log-title" hidden={!logs.open()}>
+    // desmontado fechado: as linhas que chegam não mexem no DOM
+    <Show when={logs.open()}>
+    <section class="log-panel" aria-labelledby="log-title">
       <div class="log-head">
         <h2 class="section-title" id="log-title">
           <Icon name="square-terminal" />
@@ -166,5 +168,6 @@ export function LogPanel() {
         </Show>
       </div>
     </section>
+    </Show>
   );
 }

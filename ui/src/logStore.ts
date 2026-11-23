@@ -12,7 +12,9 @@ export const logs = createRoot(() => {
   const [open, setOpen] = createSignal(false);
   /** erros chegados com o painel fechado (selo no botão) */
   const [unseen, setUnseen] = createSignal(0);
+  // filtra só com o painel aberto (fechado, nenhuma linha nova refaz o filtro)
   const visible = createMemo(() => {
+    if (!open()) return [];
     const [wanted, text] = [levels(), query().trim().toLowerCase()];
     return entries().filter((entry) => matches(entry, wanted, text));
   });
