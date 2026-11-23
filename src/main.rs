@@ -223,13 +223,30 @@ fn open_log(app: AppHandle) -> Result<(), String> {
         .map_err(|err| format!("Could not open log file {}: {err}", path.display()))
 }
 
-/// Pasta dos converters do usuário, ao lado do INI (gravável em todos os sistemas).
-fn converters_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    Ok(app
-        .path()
-        .app_config_dir()
-        .map_err(|err| err.to_string())?
-        .join("converters"))
+/// Pasta dos converters, lida em tempo de execução e editável sem recompilar, como os plugins do
+/// garten-updater: `RSMODMASTER_CONVERTERS_DIR`, `converters/` ao lado do executável (os pacotes de
+/// release a levam), `Resources/converters` num bundle do macOS e, em desenvolvimento, a pasta
+/// `core/converters` do projeto. Sem nenhuma delas, `converters/` ao lado do executável, criada ao
+/// salvar o primeiro.
+fn converters_dir() -> PathBuf {
+    if let Some(dir) = std::env::var_os("RSMODMASTER_CONVERTERS_DIR") {
+        return dir.into();
+    }
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(Path::to_path_buf));
+    let found = exe_dir
+        .iter()
+        .flat_map(|dir| [dir.join("converters"), dir.join("../Resources/converters")])
+        .find(|dir| dir.is_dir())
+        .and_then(|dir| dir.canonicalize().ok());
+    found.unwrap_or_else(|| {
+        if cfg!(debug_assertions) {
+            PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/core/converters"))
+        } else {
+            exe_dir.unwrap_or_default().join("converters")
+        }
+    })
 }
 
 #[derive(Serialize)]
@@ -253,12 +270,8 @@ fn catalog(dir: &Path, converters: &Converters) -> Catalog {
 
 /// Lista os converters; com `reload`, relê a pasta antes (botão Reload e depois de salvar).
 #[tauri::command]
-async fn converters(
-    app: AppHandle,
-    state: State<'_, SharedConverters>,
-    reload: bool,
-) -> Result<Catalog, String> {
-    let dir = converters_dir(&app)?;
+async fn converters(state: State<'_, SharedConverters>, reload: bool) -> Result<Catalog, String> {
+    let dir = converters_dir();
     let state = state.inner().clone();
     blocking(move || {
         let mut converters = state.lock().unwrap();
@@ -346,19 +359,18 @@ async fn convert_encode(
 
 /// Código de um converter, para o editor embutido (só ids válidos: nunca um caminho da webview).
 #[tauri::command]
-fn converter_source(app: AppHandle, id: String) -> Result<String, String> {
-    convert::source(&converters_dir(&app)?, &id)
+fn converter_source(id: String) -> Result<String, String> {
+    convert::source(&converters_dir(), &id)
 }
 
 /// Grava o converter e recarrega todos: o catálogo devolvido traz o erro de carga, se houver.
 #[tauri::command]
 async fn save_converter(
-    app: AppHandle,
     state: State<'_, SharedConverters>,
     id: String,
     source: String,
 ) -> Result<Catalog, String> {
-    let dir = converters_dir(&app)?;
+    let dir = converters_dir();
     let state = state.inner().clone();
     blocking(move || {
         convert::save(&dir, &id, &source)?;
@@ -371,11 +383,10 @@ async fn save_converter(
 
 #[tauri::command]
 async fn delete_converter(
-    app: AppHandle,
     state: State<'_, SharedConverters>,
     id: String,
 ) -> Result<Catalog, String> {
-    let dir = converters_dir(&app)?;
+    let dir = converters_dir();
     let state = state.inner().clone();
     blocking(move || {
         convert::delete(&dir, &id)?;
@@ -388,7 +399,7 @@ async fn delete_converter(
 
 #[tauri::command]
 fn open_converters_dir(app: AppHandle) -> Result<(), String> {
-    let dir = converters_dir(&app)?;
+    let dir = converters_dir();
     fs::create_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
     app.opener()
         .open_path(dir.display().to_string(), None::<&str>)
@@ -428,14 +439,8 @@ fn main() {
         .manage::<Shared>(Arc::new(master))
         .setup(move |app| {
             let handle = app.handle().clone();
-            // exemplos só na primeira vez; depois a pasta é do usuário
-            let dir = converters_dir(&handle)?;
-            if let Err(err) = convert::install_examples(&dir) {
-                log::warn!(
-                    "Could not install example converters in {}: {err}",
-                    dir.display()
-                );
-            }
+            let dir = converters_dir();
+            log::info!("Converters from {}", dir.display());
             app.manage::<SharedConverters>(Arc::new(Mutex::new(Converters::load(&dir))));
             thread::spawn(move || forward(handle, rx));
             Ok(())

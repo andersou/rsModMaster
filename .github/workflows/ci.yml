@@ -129,13 +129,22 @@ jobs:
       # o que o `tauri build` faria, sem o Tauri CLI
       - name: Build
         run: cargo build --release --locked -p rsmodmaster --features tauri/custom-protocol
+      # binário + converters/ (exemplos Lua, editáveis sem recompilar), como os plugins do garten-updater
       - name: Archive (Linux, macOS)
         if: runner.os != 'Windows'
-        run: tar -czf "${{ matrix.archive }}" -C target/release rsmodmaster
+        run: |
+          mkdir -p out
+          cp target/release/rsmodmaster out/
+          cp -R core/converters out/converters
+          tar -czf "${{ matrix.archive }}" -C out .
       - name: Archive (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Compress-Archive -Path target/release/rsmodmaster.exe -DestinationPath "${{ matrix.archive }}"
+        run: |
+          New-Item -ItemType Directory -Force out | Out-Null
+          Copy-Item target/release/rsmodmaster.exe out/
+          Copy-Item -Recurse core/converters out/converters
+          Compress-Archive -Path out/* -DestinationPath "${{ matrix.archive }}"
       - uses: actions/upload-artifact@v7
         with:
           name: rsModMaster-${{ matrix.platform }}

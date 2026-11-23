@@ -57,10 +57,14 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
 
 ## Custom converters
 
-Cada converter é um arquivo `<id>.lua` na pasta `converters/`, ao lado do `fModMaster.ini` (o diálogo
-**Converters** mostra o caminho). O app traz três exemplos na primeira vez: `int16_div10` (inteiro
-com sinal ÷ 10), `uint32_abcd` (32 bits em 2 registradores) e `status_bits` (bits viram nomes, só
-leitura).
+Cada converter é um arquivo `<id>.lua` na pasta `converters/` **ao lado do executável**, que vem no
+pacote de release e pode ser editada sem recompilar, como a `plugins/` do garten-updater. O diálogo
+**Converters** mostra o caminho em uso. Ordem de busca: a variável `RSMODMASTER_CONVERTERS_DIR`,
+`converters/` ao lado do executável, `Resources/converters` num bundle do macOS e, em
+desenvolvimento (`cargo run`), a pasta `core/converters` do projeto.
+
+O pacote traz três exemplos: `int16_div10` (inteiro com sinal ÷ 10), `uint32_abcd` (32 bits em 2
+registradores) e `status_bits` (bits viram nomes, só leitura).
 
 ```lua
 return {
@@ -151,7 +155,7 @@ Jobs de `.github/workflows/ci.yml`:
 |---|---|---|
 | `check` | todo push e PR | Vitest, tipos, `ui/dist`, fmt, clippy (`-D warnings`) e testes do workspace |
 | `version` | push em `main`/`next` | calcula a próxima versão (semantic-release em dry-run) e a grava no `Cargo.toml`/`Cargo.lock` dos builds |
-| `build` | depois de `check` | binários de Linux x64, macOS arm64 e Windows x64 (artefatos do workflow) |
+| `build` | depois de `check` | binário + pasta `converters/` de Linux x64, macOS arm64 e Windows x64 (artefatos do workflow) |
 | `release` | quando há versão nova | tag `vX.Y.Z`, release no GitHub com os três pacotes e o commit da versão (`[skip ci]`) |
 
 No repositório, a versão fica como `0.0.0-dev` até a primeira release; depois, o commit de release

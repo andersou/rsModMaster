@@ -8,7 +8,7 @@
 
 use std::{
     collections::BTreeMap,
-    fs, io,
+    fs,
     path::{Path, PathBuf},
     sync::{
         Arc,
@@ -28,13 +28,6 @@ pub const MAX_TEXT: usize = 64;
 pub const MAX_REGISTERS: usize = 125;
 const MAX_FILES: usize = 200;
 pub const MAX_SOURCE: usize = 64 * 1024;
-
-/// Exemplos gravados na pasta na primeira vez (servem também de modelo).
-pub const EXAMPLES: [(&str, &str); 3] = [
-    ("int16_div10", include_str!("../converters/int16_div10.lua")),
-    ("uint32_abcd", include_str!("../converters/uint32_abcd.lua")),
-    ("status_bits", include_str!("../converters/status_bits.lua")),
-];
 
 /// Ponto de partida do botão New do editor.
 pub const TEMPLATE: &str = r#"-- regs = { reg1, reg2, ... } (unsigned 16-bit values), exactly `registers` items.
@@ -100,18 +93,6 @@ fn path_of(dir: &Path, id: &str) -> Result<PathBuf, String> {
             "Invalid converter name '{id}': use letters, digits, _ and -"
         ))
     }
-}
-
-/// Grava os exemplos se a pasta ainda não existe (depois disso, a pasta é do usuário).
-pub fn install_examples(dir: &Path) -> io::Result<()> {
-    if dir.exists() {
-        return Ok(());
-    }
-    fs::create_dir_all(dir)?;
-    for (id, source) in EXAMPLES {
-        fs::write(dir.join(format!("{id}.lua")), source)?;
-    }
-    Ok(())
 }
 
 pub fn source(dir: &Path, id: &str) -> Result<String, String> {
@@ -392,6 +373,13 @@ impl Converters {
 mod tests {
     use super::*;
 
+    /// Os exemplos que vão na pasta `converters/` dos pacotes de release.
+    const EXAMPLES: [(&str, &str); 3] = [
+        ("int16_div10", include_str!("../converters/int16_div10.lua")),
+        ("uint32_abcd", include_str!("../converters/uint32_abcd.lua")),
+        ("status_bits", include_str!("../converters/status_bits.lua")),
+    ];
+
     fn with(files: &[(&str, &str)]) -> (Converters, PathBuf) {
         let dir = std::env::temp_dir().join(format!(
             "rsmodmaster-conv-{}-{}",
@@ -602,15 +590,13 @@ mod tests {
         let dir =
             std::env::temp_dir().join(format!("rsmodmaster-conv-files-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
-        install_examples(&dir).unwrap();
-        assert_eq!(fs::read_dir(&dir).unwrap().count(), 3);
         assert!(save(&dir, "../escape", "x").is_err());
         assert!(source(&dir, "a/b").is_err());
         save(&dir, "mine", TEMPLATE).unwrap();
         assert_eq!(source(&dir, "mine").unwrap(), TEMPLATE);
         assert!(Converters::load(&dir).errors().is_empty());
         delete(&dir, "mine").unwrap();
-        install_examples(&dir).unwrap(); // pasta já existe: não regrava
+        assert!(source(&dir, "mine").is_err());
         assert!(save(&dir, "big", &"x".repeat(MAX_SOURCE + 1)).is_err());
         fs::remove_dir_all(dir).unwrap();
     }
