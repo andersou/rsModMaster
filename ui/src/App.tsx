@@ -15,7 +15,8 @@ import { Toasts } from './components/Toasts';
 import { isMac } from './platform';
 import { toast } from './toasts';
 
-/** Atalhos: ⌘↩ / Ctrl+Enter lê ou escreve; ⌘K / Ctrl+K conecta ou desconecta (nunca sob um diálogo). */
+/** Atalhos: ⌘↩ / Ctrl+Enter lê ou escreve; ⌘K / Ctrl+K conecta ou desconecta; ⌘G / Ctrl+G alterna
+ *  tabela e gráfico (nunca sob um diálogo). */
 function onShortcut(event: KeyboardEvent) {
   if (!(isMac ? event.metaKey : event.ctrlKey) || event.altKey || event.shiftKey || app.dialogOpen()) return;
   if (event.key === 'Enter') {
@@ -24,6 +25,9 @@ function onShortcut(event: KeyboardEvent) {
   } else if (event.key.toLowerCase() === 'k') {
     event.preventDefault();
     app.connect();
+  } else if (event.key.toLowerCase() === 'g' && !app.spec().write) {
+    event.preventDefault();
+    app.setView(app.view() === 'chart' ? 'table' : 'chart');
   }
 }
 

@@ -65,6 +65,9 @@ pub struct Outcome {
     pub error: Option<String>,
     pub packets: u64,
     pub errors: u64,
+    /// Fim da transação, em ms desde 1970: o gráfico usa esta hora, não a de chegada (os eventos
+    /// do scan chegam em lote).
+    pub at: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -312,6 +315,7 @@ fn run(state: &Mutex<State>, events: &Sender<Event>, req: &Request) -> Result<Ou
         error,
         packets: state.packets,
         errors: state.errors,
+        at: now_ms(),
     })
 }
 
@@ -404,6 +408,12 @@ fn frame_gap(baud: u32) -> Duration {
         1..=19200 => Duration::from_micros(38_500_000 / u64::from(baud)),
         _ => Duration::from_micros(1750),
     }
+}
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 fn open_tcp(addr: SocketAddr, timeout: Duration) -> io::Result<TcpStream> {

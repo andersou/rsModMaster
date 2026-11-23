@@ -698,3 +698,24 @@ a:hover { color: var(--link-hover); }
 .code-input::selection { background: var(--selection); color: transparent; }
 .code-editor.plain .code-input { color: var(--code-fg); }
 .conv-error { display: flex; align-items: flex-start; gap: 6px; font: 12px/18px var(--mono); overflow-wrap: anywhere; }
+
+/* ---- gráfico ---- */
+.chart-view { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.chart-toolbar { display: flex; align-items: center; gap: 8px; }
+.chart-toolbar .segmented { margin-left: 0; }
+.chart-body { flex: 1; min-height: 0; display: flex; gap: 12px; }
+.chart-plot { position: relative; flex: 1; min-width: 0; min-height: 160px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); overflow: hidden; }
+.chart-plot .uplot { position: absolute; inset: 0; }
+.chart-legend { flex: none; width: 220px; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
+.chart-legend ul { margin: 0; padding: 0; list-style: none; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.chart-legend li { display: flex; align-items: center; gap: 2px; }
+.chart-legend li.off .legend-item { opacity: .45; }
+.legend-time { font: 11px var(--mono); color: var(--muted); }
+.legend-item { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 4px 6px; border: 0; border-radius: 6px; background: transparent; font-size: 12px; text-align: left; cursor: pointer; }
+.legend-item:hover { background: var(--secondary-hover); }
+.legend-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.legend-value { flex: none; font: 12px var(--mono); }
+.menu-swatch { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.menu-label { margin: 0 4px 4px; }
+.menu-label input { min-width: 0; }
+.registers .card-head .segmented { margin-left: 0; }

@@ -24,9 +24,11 @@ import {
   hasFloat,
   startsInsideFloat,
   toEndian,
+  parseNumber,
   validateConverter,
   validateFormat,
 } from './lib/registers';
+import { type ChartData, dropColumn, emptyChart, fillSample, freeSlot, pushSample, resetColumn, type WindowKey, WINDOWS } from './lib/chart';
 import { convertAddress, type FormErrors, parseAddress, validateForm } from './lib/form';
 import type { Catalog, CoreEvent, Outcome, Request, Settings } from './lib/types';
 import { toast } from './toasts';
@@ -72,7 +74,25 @@ const [scanning, setScanning] = createSignal(false);
 const [busy, setBusy] = createSignal(false);
 const [counters, setCounters] = createSignal({ packets: 0, errors: 0 });
 /** valores da última transação; `valid: false` depois de um erro */
-const [table, setTable] = createSignal<{ values: number[]; valid: boolean }>({ values: [], valid: true });
+/** valores da última transação; `at` = instante gravado no gráfico (0 = sem amostra) */
+const [table, setTable] = createSignal<{ values: number[]; valid: boolean; at: number }>({ values: [], valid: true, at: 0 });
+
+// ---- gráfico ----
+const chart: ChartData = emptyChart();
+/** muda a cada amostra: a visão Chart redesenha (no máximo uma vez por quadro) */
+const [chartVersion, setChartVersion] = createSignal(0);
+const bumpChart = () => setChartVersion((v) => v + 1);
+const [view, setView] = createSignal<'table' | 'chart'>('table');
+const WINDOW_KEY = 'rsmodmaster.chartWindow';
+const storedWindow = localStorage.getItem(WINDOW_KEY);
+const [chartWindow, setChartWindowSignal] = createSignal<WindowKey>(
+  WINDOWS.some((w) => w.value === storedWindow) ? (storedWindow as WindowKey) : '2m',
+);
+function clearChart() {
+  chart.t.length = 0;
+  chart.cols.clear();
+  bumpChart();
+}
 const [edits, setEdits] = createStore<Record<number, string>>({});
 const [invalidCell, setInvalidCell] = createSignal<number | null>(null);
 const [raw, setRaw] = createSignal<RawLine[]>([]);
@@ -90,6 +110,8 @@ interface Checkpoint {
   formats: Record<string, number>;
   endians: Record<string, number>;
   converters: Record<string, string>;
+  labels: Record<string, string>;
+  charts: Record<string, number>;
 }
 const checkpoints = new Map<number, Checkpoint>();
 
@@ -117,6 +139,18 @@ const formats = createMemo(() => {
 const endians = createMemo(() => {
   const out: Record<number, Endian> = {};
   for (const [addr, value] of Object.entries(settings.registerFloatEndians ?? {})) out[Number(addr)] = toEndian(value);
+  return out;
+});
+/** registradores no gráfico: endereço -> cor (0..7), na ordem dos endereços */
+const charted = createMemo(() => {
+  const out = new Map<number, number>();
+  const entries = Object.entries(settings.registerCharts ?? {}).sort((a, b) => Number(a[0]) - Number(b[0]));
+  for (const [addr, slot] of entries) out.set(Number(addr), slot);
+  return out;
+});
+const labels = createMemo(() => {
+  const out: Record<number, string> = {};
+  for (const [addr, text] of Object.entries(settings.registerLabels ?? {})) out[Number(addr)] = text;
   return out;
 });
 const assigned = createMemo(() => {
@@ -149,7 +183,7 @@ let lastConverterError: string | undefined;
 createEffect(
   on([() => table(), assigned, sizes, startAddress, quantity, () => spec().bits], async () => {
     const seq = ++decodeSeq;
-    const { values, valid } = table();
+    const { values, valid, at } = table();
     const start = startAddress();
     const items: { address: number; id: string; regs: number[] }[] = [];
     if (valid && !spec().bits) {
@@ -164,6 +198,16 @@ createEffect(
     if (!items.length) return setConverted({});
     try {
       const results = await api.convertDecode(items.map(({ id, regs }) => ({ id, regs })));
+      // o gráfico recebe o valor na linha da sua leitura, mesmo que a tabela já tenha andado
+      if (at) {
+        let filled = false;
+        for (const [i, item] of items.entries()) {
+          if (!charted().has(item.address)) continue;
+          const value = results[i].value;
+          filled = fillSample(chart, at, item.address, value === undefined ? null : parseNumber(value)) || filled;
+        }
+        if (filled) bumpChart();
+      }
       if (seq !== decodeSeq) return;
       setConverted(Object.fromEntries(items.map((item, i) => [item.address, results[i]])));
       // como no scan: a mesma mensagem de script uma vez só
@@ -230,7 +274,7 @@ const sessionDefaults = {
 };
 
 function clearTable() {
-  setTable({ values: [], valid: true });
+  setTable({ values: [], valid: true, at: 0 });
   setEdits(reconcile({}));
   setInvalidCell(null);
 }
@@ -291,9 +335,26 @@ async function writeValues(): Promise<number[] | undefined | null> {
   return result.values;
 }
 
+/** Amostra do gráfico com o que a tabela vai mostrar desta leitura; os converters entram como
+ *  lacuna e são preenchidos quando o decode responde. Erro de comunicação = lacuna em tudo. */
+function sample(outcome: Outcome): number {
+  if (!charted().size || spec().write) return 0;
+  const nums = new Map<number, number | null>();
+  if (outcome.error === null) {
+    const next = buildRows({ ...grid(), values: outcome.values, valid: true, converted: {} });
+    for (const cell of next.flatMap((r) => r.cells)) {
+      if (cell.kind === 'value' && cell.converter === undefined && charted().has(cell.address)) nums.set(cell.address, cell.num ?? null);
+    }
+  }
+  const t = pushSample(chart, outcome.at, nums, [...charted().keys()]);
+  bumpChart();
+  return t;
+}
+
 function apply(outcome: Outcome, fromScan = false) {
   setCounters({ packets: outcome.packets, errors: outcome.errors });
-  setTable({ values: outcome.values, valid: outcome.error === null });
+  const at = sample(outcome);
+  setTable({ values: outcome.values, valid: outcome.error === null, at });
   // escrita que falhou: o que foi digitado fica para tentar de novo
   if (outcome.error === null) setEdits(reconcile({}));
   // no scan, o mesmo erro a cada volta vira um aviso só
@@ -365,6 +426,7 @@ export const app = {
     const size = sizes()[id] ?? 1;
     const message = validateConverter(address, size, formats(), assigned(), sizes());
     if (message) return toast(message, 'warning');
+    resetColumn(chart, address);
     setSettings('registerConverters', String(address), id);
     setSettings('registerFormats', String(address), undefined!);
     setSettings('registerFloatEndians', String(address), undefined!);
@@ -450,6 +512,38 @@ export const app = {
     }),
 
   clearTable,
+  view,
+  setView,
+  chart,
+  chartVersion,
+  charted,
+  labels,
+  clearChart,
+  chartWindow,
+  setChartWindow(value: WindowKey) {
+    localStorage.setItem(WINDOW_KEY, value);
+    setChartWindowSignal(value);
+  },
+  /** Põe ou tira o registrador do gráfico (no máximo 8, cada um com sua cor). */
+  toggleChart(address: number) {
+    if (charted().has(address)) {
+      setSettings('registerCharts', String(address), undefined!);
+      dropColumn(chart, address);
+      bumpChart();
+    } else {
+      const slot = freeSlot(charted().values());
+      if (slot === null) return toast('The chart shows at most 8 registers: remove one first.', 'warning');
+      setSettings('registerCharts', String(address), slot);
+    }
+    void persist();
+  },
+  /** Nome do registrador (vazio apaga), até 32 caracteres. */
+  setLabel(address: number, text: string) {
+    const label = text.trim().slice(0, 32);
+    if ((labels()[address] ?? '') === label) return;
+    setSettings('registerLabels', String(address), label || undefined!);
+    void persist();
+  },
 
   async resetCounters() {
     await api.resetCounters();
@@ -458,6 +552,7 @@ export const app = {
 
   /** Troca de função: guarda as escolhas da anterior e recupera as da nova (ou ajusta a quantidade). */
   setFunction(code: number) {
+    clearChart(); // outra função, outros dados
     const previous = form.fn;
     checkpoints.set(previous, {
       qty: form.qty,
@@ -466,6 +561,8 @@ export const app = {
       formats: { ...settings.registerFormats },
       endians: { ...settings.registerFloatEndians },
       converters: { ...settings.registerConverters },
+      labels: { ...settings.registerLabels },
+      charts: { ...settings.registerCharts },
     });
     const next = functionSpec(code);
     const saved = checkpoints.get(code);
@@ -474,6 +571,8 @@ export const app = {
       setSettings('registerFormats', reconcile(saved.formats));
       setSettings('registerFloatEndians', reconcile(saved.endians));
       setSettings('registerConverters', reconcile(saved.converters));
+      setSettings('registerLabels', reconcile(saved.labels));
+      setSettings('registerCharts', reconcile(saved.charts));
     } else {
       setForm({ fn: code, qty: String(clampQuantity(int(form.qty, next.min), next)) });
     }
@@ -486,6 +585,7 @@ export const app = {
     if (base === 'float' && singleRegisterWrite()) return toast(FLOAT_NEEDS_FC10, 'warning');
     const message = validateFormat(address, base, formats(), assigned(), sizes());
     if (message) return toast(message, 'warning');
+    resetColumn(chart, address);
     setSettings('registerConverters', String(address), undefined!);
     setSettings('registerFormats', String(address), baseToFormat(base));
     if (base === 'float') setSettings('registerFloatEndians', String(address), endian ?? toEndian(settings.floatEndian));
@@ -494,6 +594,7 @@ export const app = {
   },
 
   resetFormat(address: number) {
+    resetColumn(chart, address);
     setSettings('registerConverters', String(address), undefined!);
     setSettings('registerFormats', String(address), undefined!);
     setSettings('registerFloatEndians', String(address), undefined!);
@@ -510,6 +611,9 @@ export const app = {
     setSettings('registerFormats', reconcile({}));
     setSettings('registerFloatEndians', reconcile({}));
     setSettings('registerConverters', reconcile({}));
+    setSettings('registerLabels', reconcile({}));
+    setSettings('registerCharts', reconcile({}));
+    clearChart();
     checkpoints.clear();
     loadForm();
     clearTable();
@@ -520,6 +624,7 @@ export const app = {
       const loadedSettings = await api.loadSession();
       if (!loadedSettings) return;
       setSettings(reconcile(loadedSettings));
+      clearChart();
       checkpoints.clear();
       loadForm();
       clearTable();

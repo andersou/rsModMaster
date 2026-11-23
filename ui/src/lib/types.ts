@@ -32,6 +32,10 @@ export interface Settings {
   registerFloatEndians: Record<string, number>;
   /** endereço inicial -> id do custom converter (arquivo .lua) */
   registerConverters: Record<string, string>;
+  /** endereço -> nome dado ao registrador */
+  registerLabels: Record<string, string>;
+  /** endereço -> cor da série no gráfico (0..7) */
+  registerCharts: Record<string, number>;
 }
 
 export interface ConverterInfo {
@@ -68,6 +72,8 @@ export interface Outcome {
   error: string | null;
   packets: number;
   errors: number;
+  /** fim da transação, ms desde 1970 */
+  at: number;
 }
 
 export type CoreEvent =

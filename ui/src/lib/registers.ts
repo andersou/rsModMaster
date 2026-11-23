@@ -158,6 +158,15 @@ export interface Converted {
   error?: string;
 }
 
+/** Número escrito por extenso (decimal, com expoente); `null` para texto vazio, `inf`, `nan` ou
+ *  qualquer outra coisa. `Number('')` daria 0, por isso a regra explícita. */
+export function parseNumber(text: string): number | null {
+  const t = text.trim();
+  if (!/^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(t)) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+}
+
 /** Maior converter possível (o máximo do FC 03). */
 export const MAX_CONVERTER = 125;
 
@@ -187,6 +196,8 @@ export interface Cell {
   converter?: string;
   /** erro do script (a célula mostra ERR) */
   error?: string;
+  /** valor numérico do que a célula mostra (para o gráfico); ausente se não houver */
+  num?: number;
 }
 
 export interface Row {
@@ -240,6 +251,7 @@ export function buildRows(grid: Grid): Row[] {
         tooltip: `${range} · ${id}${error ? `\n${error}` : ''}`,
         converter: id,
         error: grid.valid ? error : undefined,
+        num: !error && result?.value !== undefined ? (parseNumber(result.value) ?? undefined) : undefined,
       });
       for (let k = 1; k < size; k++) {
         const cell = continuation(address + k, 'dec', 0, `Address : ${address + k}`, grid.values[i + k] !== undefined);
@@ -256,10 +268,18 @@ export function buildRows(grid: Grid): Row[] {
     const paired = base === 'float' && i < count - 1;
     const missing = value === undefined || (paired && grid.values[i + 1] === undefined);
     let text: string;
+    let num: number | undefined;
     if (!grid.valid) text = '-/-';
     else if (missing) text = '-';
-    else if (paired) text = formatFloat(floatFromRegs(value, grid.values[i + 1], endianAt(address)));
-    else text = formatValue(value, base === 'float' ? 'dec' : base, grid.bits, grid.signed);
+    else if (paired) {
+      num = floatFromRegs(value, grid.values[i + 1], endianAt(address));
+      text = formatFloat(num);
+      if (!Number.isFinite(num)) num = undefined;
+    } else {
+      text = formatValue(value, base === 'float' ? 'dec' : base, grid.bits, grid.signed);
+      // o número é o mesmo em Bin/Dec/Hex; com sinal quando a tabela mostra com sinal
+      num = grid.bits ? (value ? 1 : 0) : grid.signed && value & 0x8000 ? (value & 0xffff) - 0x10000 : value & 0xffff;
+    }
     used.set(address, {
       address,
       kind: 'value',
@@ -270,6 +290,7 @@ export function buildRows(grid: Grid): Row[] {
       hasValue: grid.valid && !missing,
       overridden: formats[address] !== undefined && formats[address] !== grid.defaultBase,
       tooltip: paired ? `${tooltip} → ${address + 1}` : tooltip,
+      num,
     });
     if (paired) {
       const next = address + 1;

@@ -1,12 +1,17 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { app } from '../appStore';
 import { BASE_LABELS, type Base, type Cell, ENDIAN_LABELS, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
+import { shortcut } from '../platform';
+import { ChartView } from './ChartView';
 import { Icon } from './Icon';
+import { Segmented } from './Segmented';
 
 const COLUMNS = Array.from({ length: GRID_WIDTH }, (_, i) => String(i).padStart(2, '0'));
 
 interface Menu {
   address: number;
+  /** célula que mostra o valor (não a 2ª metade de float/converter): pode ir ao gráfico */
+  owner: boolean;
   x: number;
   y: number;
 }
@@ -62,13 +67,51 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
         <span>Register {props.menu.address}</span>
         <span class="menu-state">{state()}</span>
       </div>
+      {/* nome do registrador: tooltip, legenda do gráfico */}
+      <span class="input small menu-label">
+        <input
+          aria-label={`Label of register ${props.menu.address}`}
+          placeholder="Label"
+          maxLength={32}
+          spellcheck={false}
+          autocomplete="off"
+          value={app.labels()[props.menu.address] ?? ''}
+          onChange={(e) => app.setLabel(props.menu.address, e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              app.setLabel(props.menu.address, e.currentTarget.value);
+              props.onClose();
+            }
+          }}
+        />
+      </span>
+      <button
+        role="menuitemcheckbox"
+        aria-checked={app.charted().has(props.menu.address)}
+        type="button"
+        disabled={!props.menu.owner}
+        title={props.menu.owner ? undefined : 'Part of a float or converter: chart its first register'}
+        onClick={() => {
+          app.toggleChart(props.menu.address);
+          props.onClose();
+        }}
+      >
+        <Icon name="check" class="menu-check" />
+        <span class="spacer">Show in chart</span>
+        <Show when={app.charted().has(props.menu.address)}>
+          <span class="menu-swatch" style={{ background: `var(--series-${(app.charted().get(props.menu.address) ?? 0) + 1})` }} />
+        </Show>
+      </button>
+      {/* bobinas não têm formato; no scan o formato não muda (a tabela e o gráfico ficariam incoerentes) */}
+      <Show when={!app.spec().bits}>
+      <div class="hairline" />
       <For each={MENU_ITEMS}>
         {(item) => (
           <button
             role="menuitemradio"
             aria-checked={checked(item)}
             type="button"
-            disabled={current().floatOwner !== null || (item.base === 'float' && floatBlocked())}
+            disabled={app.scanning() || current().floatOwner !== null || (item.base === 'float' && floatBlocked())}
             title={item.base === 'float' && floatBlocked() ? 'Float requires Write Multiple Registers (FC 10).' : undefined}
             onClick={() => pick(item.base, item.endian)}
           >
@@ -85,7 +128,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
             role="menuitemradio"
             aria-checked={current().converter === c.id}
             type="button"
-            disabled={current().floatOwner !== null || (c.registers > 1 && floatBlocked())}
+            disabled={app.scanning() || current().floatOwner !== null || (c.registers > 1 && floatBlocked())}
             title={`${c.id}.lua · ${c.registers} register${c.registers > 1 ? 's' : ''}${c.writable ? '' : ' · read-only'}`}
             onClick={() => {
               app.setConverter(props.menu.address, c.id);
@@ -116,7 +159,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
       <button
         role="menuitem"
         type="button"
-        disabled={!current().custom && current().converter === null}
+        disabled={app.scanning() || (!current().custom && current().converter === null)}
         onClick={() => {
           app.resetFormat(props.menu.address);
           props.onClose();
@@ -125,6 +168,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
         <span class="menu-check" />
         Reset to default ({BASE_LABELS[app.form.format]})
       </button>
+      </Show>
     </div>
   );
 }
@@ -135,6 +179,12 @@ function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) =
   const text = () => app.cellText(props.cell);
   const binary = () => props.cell.base === 'bin' && !bits() && props.cell.hasValue;
   const invalid = () => app.invalidCell() === props.cell.address || !inputValid(props.cell, text(), bits(), signed());
+  /** faixa da cor da série (registrador no gráfico), somada à borda de formato próprio */
+  const marker = () => {
+    const slot = props.cell.kind === 'value' ? app.charted().get(props.cell.address) : undefined;
+    if (slot === undefined) return undefined;
+    return `inset 3px 0 0 var(--series-${slot + 1})${props.cell.overridden ? ', inset 0 0 0 1px var(--primary)' : ''}`;
+  };
   return (
     <td
       class={`cell ${props.cell.kind}`}
@@ -143,7 +193,8 @@ function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) =
         bad: (!app.grid().valid && props.cell.kind !== 'unused') || Boolean(props.cell.error),
         bin: binary(),
       }}
-      title={props.cell.tooltip || undefined}
+      title={[app.labels()[props.cell.address], props.cell.tooltip].filter(Boolean).join('\n') || undefined}
+      style={{ 'box-shadow': marker() }}
       onContextMenu={(e) => props.onMenu(e, props.cell)}
     >
       <Show when={props.cell.editable} fallback={binary() ? [props.cell.text.slice(0, 8), <wbr />, props.cell.text.slice(8)] : props.cell.text}>
@@ -167,11 +218,13 @@ export function RegistersCard() {
   const [menu, setMenu] = createSignal<Menu | null>(null);
   const onMenu = (event: MouseEvent, cell: Cell) => {
     event.preventDefault();
-    if (cell.kind === 'unused' || app.spec().bits || app.scanning()) return;
-    setMenu({ address: cell.address, x: event.clientX, y: event.clientY });
+    if (cell.kind === 'unused') return;
+    setMenu({ address: cell.address, owner: cell.kind === 'value', x: event.clientX, y: event.clientY });
   };
   const columns = () => (app.quantity() === 1 ? COLUMNS.slice(0, 1) : COLUMNS);
   const write = () => app.spec().write;
+  /** o gráfico é das leituras: numa função de escrita a tabela volta */
+  const chartView = () => app.view() === 'chart' && !write();
   const disabled = () => !app.connected() || app.scanning() || app.busy();
   return (
     <section class="card registers" aria-labelledby="registers-title">
@@ -180,8 +233,18 @@ export function RegistersCard() {
           <Icon name="table" />
           Registers
         </h2>
+        <Segmented
+          label="View"
+          value={chartView() ? 'chart' : 'table'}
+          disabled={write()}
+          onChange={app.setView}
+          options={[
+            { value: 'table', label: 'Table', title: 'Table view' },
+            { value: 'chart', label: 'Chart', title: write() ? 'Chart is for reads' : `Chart view (${shortcut('G')})` },
+          ]}
+        />
         <span class="context">
-          {app.quantity()} × {app.spec().bits ? 'coil' : 'register'} · right-click a register to change its format
+          {app.quantity()} × {app.spec().bits ? 'coil' : 'register'} · right-click a register for format, label and chart
         </span>
         <span class="spacer" />
         <button class="btn primary" classList={{ loading: app.busy() && !app.scanning() }} type="button" disabled={disabled()} onClick={app.readWrite}>
@@ -192,12 +255,17 @@ export function RegistersCard() {
           <Icon name={app.scanning() ? 'square' : 'refresh-cw'} />
           {app.scanning() ? 'Stop' : 'Scan'}
         </button>
-        <button class="btn ghost" type="button" disabled={app.scanning()} onClick={app.clearTable}>
-          <Icon name="eraser" />
-          Clear Table
-        </button>
+        <Show when={!chartView()}>
+          <button class="btn ghost" type="button" disabled={app.scanning()} onClick={app.clearTable}>
+            <Icon name="eraser" />
+            Clear Table
+          </button>
+        </Show>
       </div>
-      <div class="grid-scroll">
+      <Show when={chartView()}>
+        <ChartView />
+      </Show>
+      <div class="grid-scroll" hidden={chartView()}>
         {/* colunas iguais e fixas: nada pula no scan; Bin pede colunas mais largas (16 dígitos) */}
         <table
           class="grid"

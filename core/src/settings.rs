@@ -46,6 +46,12 @@ pub struct Settings {
     /// Custom converter por endereço inicial (id = nome do arquivo `.lua`).
     #[serde(default)]
     pub register_converters: BTreeMap<i64, String>,
+    /// Nome dado ao registrador (tooltip, legenda do gráfico), até 32 caracteres.
+    #[serde(default)]
+    pub register_labels: BTreeMap<i64, String>,
+    /// Registradores no gráfico: endereço -> cor (0..=7), que acompanha o registrador.
+    #[serde(default)]
+    pub register_charts: BTreeMap<i64, i32>,
 }
 
 impl Default for Settings {
@@ -79,6 +85,8 @@ impl Default for Settings {
             register_formats: BTreeMap::new(),
             register_float_endians: BTreeMap::new(),
             register_converters: BTreeMap::new(),
+            register_labels: BTreeMap::new(),
+            register_charts: BTreeMap::new(),
         }
     }
 }
@@ -95,6 +103,12 @@ fn serial_port_name(dev: &str, port: &str) -> String {
 }
 
 type Ini = BTreeMap<String, BTreeMap<String, String>>;
+
+/// Rótulo aceito: uma linha, sem espaços nas pontas, 1 a 32 caracteres.
+fn label(raw: &str) -> Option<String> {
+    let text: String = raw.trim().chars().take(32).collect();
+    (!text.is_empty() && !text.contains(['\n', '\r'])).then_some(text)
+}
 
 /// INI mínimo: `[seção]`, `chave = valor` (ou `:`), comentários `#`/`;`. Chaves em minúsculas.
 fn parse_ini(text: &str) -> Ini {
@@ -190,6 +204,18 @@ impl Settings {
                 .filter(|(_, id): &(i64, String)| crate::convert::valid_id(id))
                 .collect();
         }
+        if let Some(entries) = ini.get("RegisterLabels") {
+            self.register_labels = entries
+                .iter()
+                .filter_map(|(k, v)| Some((k.parse().ok()?, label(v)?)))
+                .collect();
+        }
+        if let Some(charts) = map("RegisterCharts") {
+            self.register_charts = charts
+                .into_iter()
+                .filter(|(_, slot)| (0..8).contains(slot))
+                .collect();
+        }
     }
 
     pub fn save(&self, path: &Path) -> io::Result<()> {
@@ -254,6 +280,16 @@ impl Settings {
         }
         if !self.register_float_endians.is_empty() {
             sections.push(("RegisterFloatEndians", pairs(&self.register_float_endians)));
+        }
+        if !self.register_labels.is_empty() {
+            let entries = self.register_labels.iter();
+            sections.push((
+                "RegisterLabels",
+                entries.map(|(k, v)| (k.to_string(), v.clone())).collect(),
+            ));
+        }
+        if !self.register_charts.is_empty() {
+            sections.push(("RegisterCharts", pairs(&self.register_charts)));
         }
         if !self.register_converters.is_empty() {
             let entries = self.register_converters.iter();
@@ -327,6 +363,19 @@ mod tests {
     }
 
     #[test]
+    fn labels_and_chart_slots_are_validated() {
+        let mut settings = Settings::default();
+        settings.overlay(&parse_ini(
+            "[RegisterLabels]\n1 =  Pressão  \n2 = \n3 = 0123456789012345678901234567890123456789\n\
+             [RegisterCharts]\n1 = 7\n2 = 8\n",
+        ));
+        assert_eq!(settings.register_labels[&1], "Pressão");
+        assert!(!settings.register_labels.contains_key(&2));
+        assert_eq!(settings.register_labels[&3].chars().count(), 32);
+        assert_eq!(settings.register_charts, BTreeMap::from([(1, 7)]));
+    }
+
+    #[test]
     fn invalid_numbers_keep_the_default() {
         let mut settings = Settings::default();
         settings.overlay(&parse_ini("[Session]\nSlaveID = abc\nScanRate = 250\n"));
@@ -347,6 +396,10 @@ mod tests {
         settings
             .register_converters
             .insert(100, "UInt32_abcd".into());
+        settings
+            .register_labels
+            .insert(100, "Tensão L1 = fase".into());
+        settings.register_charts.insert(100, 3);
         settings.save(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("[Session]\nModBusMode = 1\n"), "{text}");

@@ -23,6 +23,15 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
 - **Custom converters em Lua** (botão `{ }` na barra de título): um script transforma um ou mais
   registradores num texto e, se quiser, o texto digitado de volta em registradores. Veja abaixo.
 
+- **Gráfico** (seletor *Table | Chart* no card Registers, ou `⌘G`/`Ctrl+G`): botão direito num
+  registrador → *Show in chart* (até 8, cada um na sua cor) e, no mesmo menu, um *Label* para ele.
+  Mostra o valor que a tabela mostra (float, converter numérico, com sinal); texto, `ERR` e erro de
+  comunicação viram lacuna. Bobinas aparecem em degraus, uma faixa por bobina. Janela de 30 s,
+  2 min, 10 min ou tudo; arrastar dá zoom e pausa, **Live** volta a acompanhar. O histórico fica em
+  memória (20 mil amostras) e zera ao trocar de função ou de sessão.
+- **Tema** claro, escuro ou do sistema, no seletor do canto da barra de título (fica gravado no app,
+  não na sessão).
+
 **Atalhos:** `⌘K` / `Ctrl+K` conecta ou desconecta; `⌘↩` / `Ctrl+Enter` lê ou escreve.
 
 **Onde ficam os arquivos:** o `fModMaster.ini` fica na pasta de configuração do app e o log
@@ -46,6 +55,8 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
 - Bobinas e entradas discretas ignoram formato: são sempre 0/1.
 - O cabeçalho das linhas da tabela segue o Dec/Hex do endereço inicial, não o formato dos valores.
 - Erro repetido no scan vira um aviso só, até mudar.
+- Labels e registradores do gráfico ficam no INI e nas sessões, nas seções `[RegisterLabels]` e
+  `[RegisterCharts]` (o qModMaster as ignora; o fModMaster as apaga se salvar o INI).
 - Campos inválidos (escravo, endereço, quantidade, scan rate) ficam marcados e bloqueiam a leitura,
   a escrita e o scan, em vez de serem ajustados em silêncio. O scan tem mínimo de 50 ms, e alternar
   Dec/Hex converte o endereço digitado.
