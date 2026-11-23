@@ -238,7 +238,7 @@ const maxLines = () => {
   return n > 0 ? n : 60;
 };
 
-// ---- INI <-> tela ----
+// ---- configurações <-> tela ----
 
 function loadForm() {
   const fn = functionFromSetting(settings.functionCode);
@@ -268,7 +268,7 @@ function syncSettings() {
   });
 }
 
-/** Grava o INI com o que está na tela (ao conectar, a cada leitura/escrita e nas configurações). */
+/** Grava o `settings.toml` com o que está na tela (ao conectar, a cada leitura/escrita e nas configurações). */
 async function persist() {
   syncSettings();
   try {

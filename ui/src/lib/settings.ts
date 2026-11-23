@@ -8,7 +8,7 @@ export const validIp = (ip: string) => {
 
 export const validPort = (port: string) => /^\d{1,5}$/.test(port.trim()) && Number(port) >= 1 && Number(port) <= 65535;
 
-/** `SerialDev` e `SerialPort` do INI a partir do nome da porta (`/dev/ttyS0` -> `/dev/ttyS`, `1`),
+/** `serialDev` e `serialPort` da sessão a partir do nome da porta (`/dev/ttyS0` -> `/dev/ttyS`, `1`),
  *  o inverso do `setSerialPort` do qModMaster. */
 export function splitSerialPortName(name: string): [string, string] {
   const cleaned = name.trim().replace(/^\\\\\.\\/, '');

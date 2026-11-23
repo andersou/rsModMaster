@@ -1,5 +1,5 @@
 // Idioma da tela: inglês, português ou espanhol. Preferência em localStorage (como o tema; não vai
-// no INI) e, sem ela, o idioma do sistema. Tudo o que chama `t` dentro de JSX, memo ou efeito se
+// na sessão) e, sem ela, o idioma do sistema. Tudo o que chama `t` dentro de JSX, memo ou efeito se
 // atualiza ao trocar o idioma.
 
 import * as i18n from '@solid-primitives/i18n';

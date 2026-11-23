@@ -175,7 +175,7 @@ describe('escrita', () => {
   });
 });
 
-describe('INI', () => {
+describe('session', () => {
   it('Base da sessão no índice do qModMaster (Hex = 0 volta como Hex)', () => {
     for (const b of ['bin', 'dec', 'hex', 'float'] as const) expect(baseFromSession(baseToSession(b))).toBe(b);
     expect(baseFromSession(16)).toBe('hex');

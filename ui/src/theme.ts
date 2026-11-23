@@ -1,4 +1,4 @@
-// Tema da janela: preferência em localStorage (não no INI: carregar a sessão de um colega não
+// Tema da janela: preferência em localStorage (não na sessão: carregar a sessão de um colega não
 // pode trocar o tema), "System" acompanha o sistema ao vivo, e a janela nativa (barra de título,
 // botões do macOS, fundo) segue o tema escolhido.
 

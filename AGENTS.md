@@ -4,7 +4,7 @@ Orientações para agentes de código (Claude Code, Codex etc.) neste repositór
 faz e como usá-lo, leia o [`README.md`](README.md).
 
 rsModMaster é um mestre Modbus RTU/TCP para desktop: núcleo em Rust, janela em Tauri 2, tela em
-SolidJS. Sucessor do fModMaster (Python/Flet) e compatível com o INI do qModMaster.
+SolidJS. Sucessor do fModMaster (Python/Flet) e inspirado no qModMaster.
 
 ## Mapa do projeto
 
@@ -13,12 +13,12 @@ SolidJS. Sucessor do fModMaster (Python/Flet) e compatível com o INI do qModMas
 | `core/` (`modmaster-core`) | protocolo e regras, **sem UI e sem Tauri** | tudo aqui tem teste de unidade no próprio arquivo |
 | `core/src/frame.rs` | PDUs, envelopes RTU (CRC) e TCP (MBAP), decodificação para o bus monitor | funções puras |
 | `core/src/master.rs` | conexão, uma transação por vez, thread do scan, eventos | E/S bloqueante atrás de um `Mutex` |
-| `core/src/settings.rs` | INI do qModMaster (`Settings`) | veja "INI" abaixo |
+| `core/src/settings.rs` | configurações e sessão em TOML (`Settings`) | veja "Configurações e sessão" abaixo |
 | `core/src/convert.rs` | converters Lua em sandbox (mlua, Lua 5.4) | veja "Lua" abaixo |
 | `core/src/lib.rs` | ping, teste de porta TCP, lista de portas seriais | |
 | `core/converters/*.lua` | exemplos que vão nos pacotes de release | testados em `convert.rs` (`EXAMPLES`) |
 | `core/tests/simulator.rs` | conformidade contra um escravo externo (`#[ignore]`) | |
-| `src/main.rs` (`rsmodmaster`) | **só a cola do desktop**: comandos Tauri, diálogos, caminhos do INI/log/converters, ponte de eventos | sem regra de negócio |
+| `src/main.rs` (`rsmodmaster`) | **só a cola do desktop**: comandos Tauri, diálogos, caminhos das configurações/log/converters, ponte de eventos | sem regra de negócio |
 | `tauri.conf.json`, `capabilities/default.json` | janela, CSP, permissões da webview | não afrouxar sem pedido explícito |
 | `ui/src/lib/*.ts` | **lógica pura da tela** (formatos, grade, gráfico, validação, log, tema), sem DOM | Vitest em `*.test.ts` |
 | `ui/src/i18n/` | idioma da tela: dicionários `en`/`pt`/`es`, `t`, `errorText` | veja "Convenções" |
@@ -31,7 +31,7 @@ SolidJS. Sucessor do fModMaster (Python/Flet) e compatível com o INI do qModMas
 | `tools/modbus_sim.py` | escravo Modbus TCP para teste manual | |
 | `.github/workflows/ci.yml`, `release.config.cjs` | CI e semantic-release | |
 
-Regra nova de protocolo ou de INI vai no `core/`; regra nova de exibição vai em `ui/src/lib/` com
+Regra nova de protocolo ou de configurações vai no `core/`; regra nova de exibição vai em `ui/src/lib/` com
 teste. Comando novo: `src/main.rs` (função + `generate_handler!`) e `ui/src/api.ts`.
 
 ## Comandos
@@ -89,28 +89,35 @@ cargo test --workspace
   branch, o semantic-release daquele run pula a release.
 - Não edite a versão no `Cargo.toml` à mão: o commit `chore(release): X.Y.Z [skip ci]` faz isso.
 - Diffs pequenos. Sem abstração, opção ou configuração que ninguém pediu.
-- **Nenhuma dependência nova por poucas linhas** (o INI, o CRC e o MBAP são feitos à mão de
-  propósito).
+- **Nenhuma dependência nova por poucas linhas** (o CRC e o MBAP são feitos à mão de
+  propósito; o `toml` entrou porque configurações e sessões são TOML).
 - Só commite ou faça push quando o usuário pedir.
 
 ## Invariantes
 
-### INI (compatibilidade com o qModMaster)
+### Configurações e sessão
 
-- Chaves **gravadas em CamelCase**, como o qModMaster (`TCPPort`, `SlaveIP`, `ModBusMode`), e
-  **lidas sem diferenciar maiúsculas** (o fModMaster gravava em minúsculas). Chave nova: grave em
-  CamelCase em `to_ini` e leia em minúsculas em `overlay`.
-- Chave ausente ou número inválido mantém o padrão do campo; arquivo ausente = padrões.
-- `[Session] Base` e `DefaultBase` são gravadas com o mesmo valor (índice do qModMaster: 0 Hex,
-  1 Dec, 2 Bin, 3 Float). `[RegisterFormats]` usa outra codificação (2, 10, 16 e 3 = float).
-- `[Session] FunctionCode` é o **índice** na lista `FUNCTIONS` (`ui/src/lib/registers.ts`), não o
-  código da função. Não reordene a lista.
-- Dados que o qModMaster não conhece vão em **seções próprias** (`[RegisterConverters]`,
-  `[RegisterLabels]`, `[RegisterCharts]`...): o qModMaster as ignora, e o fModMaster as apaga se
-  salvar o arquivo. Não ponha chaves novas nas seções do qModMaster sem necessidade.
-- Tudo o que vem do INI é validado ao ler (id de converter, label de até 32 caracteres em uma
-  linha, cor do gráfico 0..7).
-- Preferências que não são da sessão (tema, janela do gráfico) ficam em `localStorage`, não no INI.
+- `settings.toml` e as sessões (`*.rmm-session.toml`) são o `Settings` em **TOML** pelo serde
+  (chaves em camelCase, como o IPC), com `version = FORMAT_VERSION` no topo. Exceção: os mapas
+  por endereço (`registerFormats`...) viram uma linha inline por endereço em `[registers]`
+  (`Register`, `registers()`/`set_register`). Campo novo: no `Settings` (`serde(default)` mantém o
+  padrão quando falta); dado novo por endereço: no `Register`, em `REGISTER_MAPS` e nos dois
+  métodos.
+- Mudança que um leitor antigo leria errado (chave renomeada, codificação nova): suba
+  `FORMAT_VERSION` e converta a `toml::Table` em `migrate`. Chave nova opcional não precisa de
+  versão nova.
+- Arquivo quebrado, sem `version`, com versão mais nova que `FORMAT_VERSION` ou com valor de tipo
+  errado é **erro**, nunca padrões calados: o autosave gravaria os padrões por cima. O
+  `load_settings` guarda o original como `settings.toml.bad`. `save` grava num `.tmp` e renomeia.
+- Não há leitura de INI (fModMaster, qModMaster): foi removida de propósito.
+- `defaultBase` é o índice do qModMaster (0 Hex, 1 Dec, 2 Bin, 3 Float); `format` em `[registers]` usa
+  outra codificação (2, 10, 16 e 3 = float).
+- `functionCode` é o **índice** na lista `FUNCTIONS` (`ui/src/lib/registers.ts`), não o código da
+  função. Não reordene a lista.
+- Tudo o que vem de arquivo passa por `validate` (id de converter, label de até 32 caracteres em
+  uma linha, cor do gráfico 0..7), nos dois formatos.
+- Preferências que não são da sessão (tema, janela do gráfico) ficam em `localStorage`, não no
+  arquivo.
 
 ### Modbus
 
@@ -124,7 +131,7 @@ cargo test --workspace
 - TCP: MBAP com id de transação crescente; a resposta precisa casar o id e o unit id. Em erro de
   E/S ou resposta que não casa, o stream é descartado e reaberto na próxima transação (uma resposta
   atrasada não pode casar com a pergunta seguinte).
-- Timeout de resposta: mínimo de 1 s (`master::timeout`), porque o qModMaster grava `TimeOut = 0`.
+- Timeout de resposta: mínimo de 1 s (`master::timeout`), porque o padrão (do qModMaster) é `timeOut = "0"`.
 - Os dois quadros de cada transação vão para o bus monitor, inclusive uma resposta pela metade.
 - O `Base Addr` é descontado na UI (`request()` em `appStore.ts`); o core recebe o endereço final.
 

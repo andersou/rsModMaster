@@ -7,8 +7,8 @@ e exibe os quadros brutos do barramento.
 ![Tela principal no tema escuro: conexão TCP, requisição FC 03 e a tabela com registradores em Bin, Float, Hex e num converter Lua](docs/images/table-dark.png)
 
 É o sucessor do [fModMaster](https://github.com/andersou/fModMaster) (Python/Flet), inspirado no
-[qModMaster](https://github.com/epsilonrt/qmodmaster): lê e grava o mesmo `fModMaster.ini` e as
-mesmas sessões `.fmmsess`. O núcleo é Rust, a janela é Tauri 2 e a tela é SolidJS.
+[qModMaster](https://github.com/epsilonrt/qmodmaster): configurações e sessões ficam em
+TOML versionado. O núcleo é Rust, a janela é Tauri 2 e a tela é SolidJS.
 
 **Índice:** [Funções](#funções) · [Baixar e instalar](#baixar-e-instalar) · [Como usar](#como-usar) ·
 [Custom converters](#custom-converters-lua) · [Arquivos e sessões](#arquivos-e-sessões) ·
@@ -28,7 +28,7 @@ mesmas sessões `.fmmsess`. O núcleo é Rust, a janela é Tauri 2 e a tela é S
 | **Bus Monitor** | quadros Tx/Rx brutos e os campos ADU/PDU decodificados |
 | **Log** | conexões, erros e mensagens dos converters, com busca e filtro por nível |
 | **Tools** | Report Slave ID, ping e teste da porta TCP |
-| **Sessões** | `.fmmsess` (e `.ses`/`.ini` do qModMaster), configurações num INI compatível |
+| **Sessões** | `nome.rmm-session.toml`, no mesmo formato TOML das configurações |
 | **Tema** | claro, escuro ou o do sistema |
 | **Novas versões** | ao iniciar, consulta as releases do GitHub; se houver uma nova, o botão *Download* na barra de título abre a página dela (a atualização é manual). Desliga em *Settings → General*; *About → Check for updates* verifica na hora |
 | **Idioma** | inglês, português ou espanhol (bandeira na barra de título; na primeira vez, o do sistema) |
@@ -241,38 +241,53 @@ converter não aparece nos outros.
 
 ## Arquivos e sessões
 
-As configurações e a sessão atual ficam no `fModMaster.ini`, gravado ao conectar, a cada
-leitura/escrita e ao mudar formatos ou configurações. Na primeira execução, um `fModMaster.ini` na
-pasta atual ou ao lado do executável é copiado para a pasta do app.
+As configurações e a sessão atual ficam no `settings.toml`, gravado ao conectar, a cada
+leitura/escrita e ao mudar formatos ou configurações (num `.tmp` renomeado em seguida, para uma
+queda não deixar o arquivo cortado). Se ele não abrir (editado à mão com erro, ou de uma versão
+mais nova do app), o app começa com os padrões e guarda o original como `settings.toml.bad`.
 
-| sistema | INI | log (`rsModMaster.log`) |
+| sistema | `settings.toml` | log (`rsModMaster.log`) |
 |---|---|---|
 | Windows | `%APPDATA%\io.github.andersou.rsmodmaster` | `%LOCALAPPDATA%\io.github.andersou.rsmodmaster\logs` |
 | Linux | `~/.config/io.github.andersou.rsmodmaster` | `~/.local/share/io.github.andersou.rsmodmaster/logs` |
 | macOS | `~/Library/Application Support/io.github.andersou.rsmodmaster` | `~/Library/Logs/io.github.andersou.rsmodmaster` |
 
 **Sessões:** os três primeiros ícones da barra de título são **New Session**, **Load Session**
-(`.fmmsess`, `.ses` ou `.ini`) e **Save Session** (`.fmmsess`). A sessão tem o mesmo formato do INI.
+e **Save Session** (`nome.rmm-session.toml`).
+A sessão tem o mesmo formato do `settings.toml`: `version` no topo, as chaves em camelCase e uma
+linha por registrador em `[registers]`, só com o que foi definido para ele:
 
-**O que vai além do qModMaster** fica em seções próprias, que o qModMaster ignora e o fModMaster
-apaga se salvar o arquivo:
+```toml
+version = 1
+tcpPort = "502"
+slaveIp = "192.168.0.10"
+modbusMode = 1
+defaultConverter = "int16_div10"
 
-| seção | conteúdo |
+[registers]
+10 = { format = 3, floatEndian = 1 }
+100 = { converter = "UInt32_abcd", label = "Tensão L1", chart = 3 }
+```
+
+| campo | conteúdo |
 |---|---|
-| `[RegisterFormats]`, `[RegisterFloatEndians]` | formato e ordem de bytes por endereço |
-| `[RegisterConverters]` | `endereço = id` do converter; `[Session] DefaultConverter` guarda o do formato padrão |
-| `[RegisterLabels]` | label por endereço |
-| `[RegisterCharts]` | registradores no gráfico e a cor de cada um |
+| `format` | formato do endereço: 2 Bin, 10 Dec, 16 Hex, 3 Float |
+| `floatEndian` | ordem de bytes do float |
+| `converter` | id do custom converter (nome do `.lua`) |
+| `label` | nome do registrador, até 32 caracteres |
+| `chart` | cor no gráfico (0..7); presente = registrador no gráfico |
+
+Arquivo sem `version`, com versão mais nova que a do app ou com valor de tipo errado não abre (o
+erro aparece na tela). Os INI e `.fmmsess` do fModMaster e os `.ses` do qModMaster não são lidos.
 
 A sessão guarda só o id do converter: em outra máquina sem o arquivo `.lua`, a célula mostra `ERR`.
 O tema, o idioma, a verificação de versões e a janela de tempo do gráfico ficam gravados no app, não na sessão.
 
 ## Diferenças em relação ao fModMaster
 
-- As chaves do INI são gravadas como o qModMaster grava (`TCPPort`, `SlaveIP`...); o fModMaster
-  gravava tudo em minúsculas. Os dois formatos são lidos.
-- `Base = 0` (Hex) volta como Hex; o fModMaster lia como Dec.
-- Timeout menor que 1000 ms (inclusive o `TimeOut = 0` padrão) vira 1000 ms, como antes.
+- Configurações e sessões em TOML com `version` (para migrar o formato), no lugar do INI; os
+  arquivos do fModMaster e do qModMaster não são importados.
+- Timeout menor que 1000 ms (inclusive o `timeOut = "0"` padrão) vira 1000 ms, como antes.
 - O ping espera até 5 s também no Windows e no macOS (lá o `-w`/`-W` é em ms, e o fModMaster
   passava `5`).
 - Bobinas e entradas discretas ignoram formato: são sempre 0/1.
@@ -296,9 +311,9 @@ Orientações para agentes de código (convenções, invariantes e armadilhas) e
 
 | pasta | pacote Cargo | o que é |
 |---|---|---|
-| `core/` | `modmaster-core` (biblioteca, sem UI) | Modbus RTU e TCP, scan numa thread, decodificação dos quadros para o bus monitor, INI do qModMaster, converters Lua, ping e porta TCP |
+| `core/` | `modmaster-core` (biblioteca, sem UI) | Modbus RTU e TCP, scan numa thread, decodificação dos quadros para o bus monitor, configurações e sessões em TOML, converters Lua, ping e porta TCP |
 | `core/converters/` | — | os converters de exemplo que vão nos pacotes |
-| `.` (`src/`, `tauri.conf.json`, `capabilities/`) | `rsmodmaster` | app desktop (Tauri 2): janela, diálogos de arquivo, onde fica o INI, log e ponte dos eventos |
+| `.` (`src/`, `tauri.conf.json`, `capabilities/`) | `rsmodmaster` | app desktop (Tauri 2): janela, diálogos de arquivo, onde ficam as configurações, log e ponte dos eventos |
 | `ui/` | — | a tela em SolidJS + Vite, com o design system do garten-updater (ícones Lucide, uPlot no gráfico, Shiki no editor) |
 | `ui/src/lib/` | — | regras da tela sem DOM (formatos, grade, gráfico, validação, log), testadas com Vitest |
 | `tools/modbus_sim.py` | — | escravo Modbus TCP de teste (pymodbus) |
@@ -335,7 +350,7 @@ cargo build --release -p rsmodmaster --features tauri/custom-protocol
 ```sh
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace     # protocolo, INI, converters, escravo TCP falso e RTU num pseudo-terminal (Unix)
+cargo test --workspace     # protocolo, configurações, converters, escravo TCP falso e RTU num pseudo-terminal (Unix)
 (cd ui && npm test)        # Vitest: formatos, floats, grade, escrita, gráfico, log, tema
 (cd ui && npm run check)   # tipos (tsc)
 ```

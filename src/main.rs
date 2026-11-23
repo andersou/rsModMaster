@@ -1,6 +1,6 @@
 //! rsModMaster (desktop): a UI em Tauri 2 (SolidJS + Vite em `ui/`, embutida a partir de
 //! `ui/dist`) sobre o núcleo Modbus (`core/`). Aqui ficam só o que é do desktop: a janela, os
-//! diálogos de arquivo, onde fica o INI, o log e a ponte dos eventos.
+//! diálogos de arquivo, onde ficam as configurações, o log e a ponte dos eventos.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -22,7 +22,7 @@ use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, async_runtime::sp
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 
-const INI: &str = "fModMaster.ini";
+const SETTINGS: &str = "settings.toml";
 const LOG: &str = "rsModMaster";
 
 type Shared = Arc<Master>;
@@ -36,41 +36,26 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> 
         .map_err(|err| msg!("other", text = err))
 }
 
-/// O INI fica na pasta de configuração do app. Na primeira vez, se houver um `fModMaster.ini` na
-/// pasta atual ou ao lado do executável (onde o fModMaster e o qModMaster o deixavam), ele é
-/// copiado para lá.
+/// As configurações ficam na pasta de configuração do app, em `settings.toml`.
 fn settings_path(app: &AppHandle) -> Result<PathBuf, Msg> {
     let dir = app
         .path()
         .app_config_dir()
         .map_err(|err| msg!("other", text = err))?;
     fs::create_dir_all(&dir).map_err(|err| msg!("io", path = dir.display(), err = err))?;
-    let path = dir.join(INI);
-    if !path.exists() {
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(Path::to_path_buf));
-        let legacy = [std::env::current_dir().ok(), exe_dir]
-            .into_iter()
-            .flatten()
-            .map(|dir| dir.join(INI))
-            .find(|p| p.is_file());
-        if let Some(legacy) = legacy {
-            match fs::copy(&legacy, &path) {
-                Ok(_) => log::info!("Imported settings from {}", legacy.display()),
-                Err(err) => log::warn!("Could not import {}: {err}", legacy.display()),
-            }
-        }
-    }
-    Ok(path)
+    Ok(dir.join(SETTINGS))
 }
 
 #[tauri::command]
 fn load_settings(app: AppHandle) -> Result<Settings, Msg> {
     let path = settings_path(&app)?;
-    // INI ilegível: segue com os padrões, como o fModMaster
+    // ilegível: segue com os padrões, mas guarda o original antes que o autosave o sobrescreva
     Ok(Settings::load(&path).unwrap_or_else(|err| {
-        log::error!("{}: {err}", path.display());
+        let bad = path.with_extension("toml.bad");
+        log::error!("{}: {err}; kept as {}", path.display(), bad.display());
+        if let Err(err) = fs::rename(&path, &bad) {
+            log::error!("Could not keep {}: {err}", path.display());
+        }
         Settings::default()
     }))
 }
@@ -97,7 +82,7 @@ async fn load_session(
         .file()
         .set_parent(&window)
         .set_title(title)
-        .add_filter(filter, &["fmmsess", "ses", "ini"])
+        .add_filter(filter, &["toml"])
         .blocking_pick_file()
     else {
         return Ok(None);
@@ -115,7 +100,9 @@ async fn save_session(
     title: String,
     filter: String,
 ) -> Result<Option<String>, Msg> {
-    let Some(path) = save_dialog(&window, &title, "session.fmmsess", (&filter, "fmmsess")) else {
+    // o diálogo nativo filtra só pela última extensão; o nome sugerido traz o `.rmm-session`
+    let name = "session.rmm-session.toml";
+    let Some(path) = save_dialog(&window, &title, name, (&filter, "toml")) else {
         return Ok(None);
     };
     settings

@@ -81,7 +81,7 @@ pub struct Converters {
     errors: Vec<LoadError>,
 }
 
-/// Nome de arquivo aceito como id (é a chave gravada no INI e nunca vira caminho sem passar aqui).
+/// Nome de arquivo aceito como id (é o valor gravado na sessão e nunca vira caminho sem passar aqui).
 pub fn valid_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 64

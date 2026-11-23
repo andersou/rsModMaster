@@ -6,7 +6,7 @@ export interface Msg {
   args: Record<string, string>;
 }
 
-/** INI do qModMaster (core/src/settings.rs). */
+/** Configurações e sessão (core/src/settings.rs), gravadas em TOML. */
 export interface Settings {
   tcpPort: string;
   slaveIp: string;

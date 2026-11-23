@@ -1,7 +1,5 @@
-//! Configuração e sessão no formato INI do qModMaster (`ModbusCommSettings`): os mesmos grupos,
-//! chaves e padrões, para que `fModMaster.ini` e os `.ses` sigam valendo nos dois programas.
-//! Chaves são lidas sem diferenciar maiúsculas (o fModMaster em Python gravava tudo minúsculo) e
-//! gravadas como o qModMaster grava.
+//! Configuração e sessão (`settings.toml`, `*.rmm-session.toml`) em TOML, com `version` no topo
+//! para migrar o formato. Os padrões são os do qModMaster (`ModbusCommSettings`).
 
 use std::{collections::BTreeMap, fs, io, path::Path};
 
@@ -9,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 /// Campos texto no qModMaster continuam texto aqui (a UI edita e valida); `time_out` inclusive.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+// `default`: chave ausente no arquivo mantém o padrão
+#[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     // [TCP]
     pub tcp_port: String,
@@ -41,19 +40,15 @@ pub struct Settings {
     pub default_base: i32,
     pub float_endian: i32,
     /// Custom converter usado como formato padrão da tabela (vazio = nenhum).
-    #[serde(default)]
     pub default_converter: String,
     /// Formato por endereço, quando difere do padrão (2 = Bin, 10 = Dec, 16 = Hex, 3 = Float).
     pub register_formats: BTreeMap<i64, i32>,
     pub register_float_endians: BTreeMap<i64, i32>,
     /// Custom converter por endereço inicial (id = nome do arquivo `.lua`).
-    #[serde(default)]
     pub register_converters: BTreeMap<i64, String>,
     /// Nome dado ao registrador (tooltip, legenda do gráfico), até 32 caracteres.
-    #[serde(default)]
     pub register_labels: BTreeMap<i64, String>,
     /// Registradores no gráfico: endereço -> cor (0..=7), que acompanha o registrador.
-    #[serde(default)]
     pub register_charts: BTreeMap<i64, i32>,
 }
 
@@ -106,7 +101,58 @@ fn serial_port_name(dev: &str, port: &str) -> String {
     }
 }
 
-type Ini = BTreeMap<String, BTreeMap<String, String>>;
+/// Versão do formato, gravada em `version` no topo. Mudança que o código antigo leria errado
+/// (chave renomeada, codificação nova): suba e converta em `migrate`. Chave nova opcional não
+/// precisa de versão nova.
+pub const FORMAT_VERSION: i64 = 1;
+
+/// Confere a versão e leva a tabela lida à versão atual, um passo por versão, em ordem. Versão mais
+/// nova é erro: ler só o que se conhece e salvar por cima perderia o resto.
+fn migrate(table: &mut toml::Table) -> io::Result<()> {
+    let version = match table.remove("version") {
+        Some(toml::Value::Integer(version)) if version >= 1 => version,
+        Some(other) => return Err(invalid(format!("invalid version: {other}"))),
+        None => return Err(invalid("not an rsModMaster file (no version)")),
+    };
+    if version > FORMAT_VERSION {
+        return Err(invalid(format!(
+            "format version {version} is newer than this app supports ({FORMAT_VERSION})"
+        )));
+    }
+    // 1 é a primeira versão. Próxima: `if version < 2 { /* converte table */ }`.
+    Ok(())
+}
+
+/// Mapas por endereço do `Settings` (o formato do IPC); no arquivo viram `[registers]`.
+const REGISTER_MAPS: [&str; 5] = [
+    "registerFormats",
+    "registerFloatEndians",
+    "registerConverters",
+    "registerLabels",
+    "registerCharts",
+];
+
+/// Uma linha de `[registers]`: `10 = { format = 3, label = "Tensão" }`, só com o que foi definido.
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct Register {
+    /// 2 = Bin, 10 = Dec, 16 = Hex, 3 = Float.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    float_endian: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    converter: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    label: Option<String>,
+    /// Cor no gráfico (0..=7).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    chart: Option<i32>,
+}
+
+fn invalid(err: impl std::fmt::Display) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidData, err.to_string())
+}
 
 /// Rótulo aceito: uma linha, sem espaços nas pontas, 1 a 32 caracteres.
 fn label(raw: &str) -> Option<String> {
@@ -114,215 +160,121 @@ fn label(raw: &str) -> Option<String> {
     (!text.is_empty() && !text.contains(['\n', '\r'])).then_some(text)
 }
 
-/// INI mínimo: `[seção]`, `chave = valor` (ou `:`), comentários `#`/`;`. Chaves em minúsculas.
-fn parse_ini(text: &str) -> Ini {
-    let mut ini = Ini::new();
-    let mut section = String::new();
-    for line in text.lines().map(str::trim) {
-        if line.is_empty() || line.starts_with(['#', ';']) {
-            continue;
-        }
-        if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
-            section = name.trim().to_owned();
-        } else if let Some((key, value)) = line.split_once(['=', ':']) {
-            ini.entry(section.clone())
-                .or_default()
-                .insert(key.trim().to_lowercase(), value.trim().to_owned());
+impl Settings {
+    /// Lê `path` sobre os padrões. Sem o arquivo, os padrões; chave ausente mantém o padrão.
+    pub fn load(path: &Path) -> io::Result<Settings> {
+        match fs::read_to_string(path) {
+            Ok(text) => Settings::parse(&text),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(Settings::default()),
+            Err(err) => Err(err),
         }
     }
-    ini
-}
 
-impl Settings {
-    /// Lê `path` sobre os padrões. Sem o arquivo, os padrões; chave ausente ou número inválido
-    /// mantém o padrão daquele campo (como o qModMaster e o fModMaster).
-    pub fn load(path: &Path) -> io::Result<Settings> {
-        let mut settings = Settings::default();
-        match fs::read_to_string(path) {
-            Ok(text) => settings.overlay(&parse_ini(&text)),
-            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
-            Err(err) => return Err(err),
+    /// Arquivo quebrado, sem `version` ou com valor de tipo errado é erro, nunca padrões calados.
+    fn parse(text: &str) -> io::Result<Settings> {
+        let mut table: toml::Table = text.parse().map_err(invalid)?;
+        migrate(&mut table)?;
+        let registers = match table.remove("registers") {
+            Some(toml::Value::Table(registers)) => registers,
+            Some(_) => return Err(invalid("registers: expected a table")),
+            None => toml::Table::new(),
+        };
+        let mut settings: Settings = table.try_into().map_err(invalid)?;
+        for (addr, register) in registers {
+            let addr = addr
+                .parse()
+                .map_err(|_| invalid(format!("registers: {addr}")))?;
+            settings.set_register(addr, register.try_into().map_err(invalid)?);
         }
+        settings.validate();
         Ok(settings)
     }
 
-    fn overlay(&mut self, ini: &Ini) {
-        let get = |section: &str, key: &str| ini.get(section)?.get(key).cloned();
-        let text = |field: &mut String, section: &str, key: &str| {
-            if let Some(value) = get(section, key) {
-                *field = value;
-            }
-        };
-        let int = |field: &mut i32, section: &str, key: &str| {
-            if let Some(value) = get(section, key).and_then(|v| v.parse().ok()) {
-                *field = value;
-            }
-        };
-        text(&mut self.tcp_port, "TCP", "tcpport");
-        text(&mut self.slave_ip, "TCP", "slaveip");
-        if !cfg!(windows) {
-            text(&mut self.serial_dev, "RTU", "serialdev"); // no Windows o qModMaster força "COM"
+    fn set_register(&mut self, addr: i64, register: Register) {
+        if let Some(format) = register.format {
+            self.register_formats.insert(addr, format);
         }
-        text(&mut self.serial_port, "RTU", "serialport");
-        text(&mut self.serial_port_name, "RTU", "serialportname");
-        text(&mut self.baud, "RTU", "baud");
-        text(&mut self.data_bits, "RTU", "databits");
-        text(&mut self.stop_bits, "RTU", "stopbits");
-        text(&mut self.parity, "RTU", "parity");
-        text(&mut self.rts, "RTU", "rts");
-        // MaxNoOfLines = 0 volta ao padrão, como no qModMaster
-        if let Some(lines) = get("Var", "maxnooflines").filter(|v| v.parse() != Ok(0)) {
-            self.max_no_of_lines = lines;
+        if let Some(endian) = register.float_endian {
+            self.register_float_endians.insert(addr, endian);
         }
-        text(&mut self.base_addr, "Var", "baseaddr");
-        text(&mut self.time_out, "Var", "timeout");
-        int(&mut self.logging_level, "Var", "logginglevel");
-        int(&mut self.modbus_mode, "Session", "modbusmode");
-        int(&mut self.slave_id, "Session", "slaveid");
-        int(&mut self.scan_rate, "Session", "scanrate");
-        int(&mut self.function_code, "Session", "functioncode");
-        int(&mut self.start_addr, "Session", "startaddr");
-        int(&mut self.no_of_regs, "Session", "noofregs");
-        // Base é a chave do qModMaster; DefaultBase, quando existe, vale sobre ela
-        int(&mut self.default_base, "Session", "base");
-        int(&mut self.default_base, "Session", "defaultbase");
-        int(&mut self.float_endian, "Session", "floatendian");
-        if let Some(id) = get("Session", "defaultconverter") {
-            self.default_converter = if crate::convert::valid_id(&id) {
-                id
-            } else {
-                String::new()
-            };
+        if let Some(id) = register.converter {
+            self.register_converters.insert(addr, id);
         }
-        let map = |section: &str| -> Option<BTreeMap<i64, i32>> {
-            let entries = ini.get(section)?.iter();
-            Some(
-                entries
-                    .filter_map(|(k, v)| Some((k.parse().ok()?, v.parse().ok()?)))
-                    .collect(),
-            )
-        };
-        if let Some(formats) = map("RegisterFormats") {
-            self.register_formats = formats;
+        if let Some(text) = register.label {
+            self.register_labels.insert(addr, text);
         }
-        if let Some(endians) = map("RegisterFloatEndians") {
-            self.register_float_endians = endians;
-        }
-        if let Some(entries) = ini.get("RegisterConverters") {
-            self.register_converters = entries
-                .iter()
-                .filter_map(|(k, v)| Some((k.parse().ok()?, v.clone())))
-                .filter(|(_, id): &(i64, String)| crate::convert::valid_id(id))
-                .collect();
-        }
-        if let Some(entries) = ini.get("RegisterLabels") {
-            self.register_labels = entries
-                .iter()
-                .filter_map(|(k, v)| Some((k.parse().ok()?, label(v)?)))
-                .collect();
-        }
-        if let Some(charts) = map("RegisterCharts") {
-            self.register_charts = charts
-                .into_iter()
-                .filter(|(_, slot)| (0..8).contains(slot))
-                .collect();
+        if let Some(slot) = register.chart {
+            self.register_charts.insert(addr, slot);
         }
     }
 
-    pub fn save(&self, path: &Path) -> io::Result<()> {
-        fs::write(path, self.to_ini())
-    }
-
-    fn to_ini(&self) -> String {
-        let mut sections: Vec<(&str, Vec<(String, String)>)> = vec![
-            (
-                "TCP",
-                vec![
-                    ("TCPPort".into(), self.tcp_port.clone()),
-                    ("SlaveIP".into(), self.slave_ip.clone()),
-                ],
-            ),
-            (
-                "RTU",
-                vec![
-                    ("SerialDev".into(), self.serial_dev.clone()),
-                    ("SerialPort".into(), self.serial_port.clone()),
-                    ("SerialPortName".into(), self.serial_port_name.clone()),
-                    ("Baud".into(), self.baud.clone()),
-                    ("DataBits".into(), self.data_bits.clone()),
-                    ("StopBits".into(), self.stop_bits.clone()),
-                    ("Parity".into(), self.parity.clone()),
-                    ("RTS".into(), self.rts.clone()),
-                ],
-            ),
-            (
-                "Var",
-                vec![
-                    ("MaxNoOfLines".into(), self.max_no_of_lines.clone()),
-                    ("BaseAddr".into(), self.base_addr.clone()),
-                    ("TimeOut".into(), self.time_out.clone()),
-                    ("LoggingLevel".into(), self.logging_level.to_string()),
-                ],
-            ),
-            (
-                "Session",
-                [
-                    ("ModBusMode", self.modbus_mode),
-                    ("SlaveID", self.slave_id),
-                    ("ScanRate", self.scan_rate),
-                    ("FunctionCode", self.function_code),
-                    ("StartAddr", self.start_addr),
-                    ("NoOfRegs", self.no_of_regs),
-                    ("Base", self.default_base),
-                    ("DefaultBase", self.default_base),
-                    ("FloatEndian", self.float_endian),
-                ]
-                .map(|(k, v)| (k.to_owned(), v.to_string()))
-                .into(),
-            ),
-        ];
-        if !self.default_converter.is_empty() {
-            sections[3]
-                .1
-                .push(("DefaultConverter".into(), self.default_converter.clone()));
+    fn registers(&self) -> BTreeMap<i64, Register> {
+        let mut out = BTreeMap::<i64, Register>::new();
+        for (&addr, &format) in &self.register_formats {
+            out.entry(addr).or_default().format = Some(format);
         }
-        let pairs = |map: &BTreeMap<i64, i32>| -> Vec<(String, String)> {
-            map.iter()
-                .map(|(k, v)| (k.to_string(), v.to_string()))
-                .collect()
-        };
-        if !self.register_formats.is_empty() {
-            sections.push(("RegisterFormats", pairs(&self.register_formats)));
+        for (&addr, &endian) in &self.register_float_endians {
+            out.entry(addr).or_default().float_endian = Some(endian);
         }
-        if !self.register_float_endians.is_empty() {
-            sections.push(("RegisterFloatEndians", pairs(&self.register_float_endians)));
+        for (&addr, id) in &self.register_converters {
+            out.entry(addr).or_default().converter = Some(id.clone());
         }
-        if !self.register_labels.is_empty() {
-            let entries = self.register_labels.iter();
-            sections.push((
-                "RegisterLabels",
-                entries.map(|(k, v)| (k.to_string(), v.clone())).collect(),
-            ));
+        for (&addr, text) in &self.register_labels {
+            out.entry(addr).or_default().label = Some(text.clone());
         }
-        if !self.register_charts.is_empty() {
-            sections.push(("RegisterCharts", pairs(&self.register_charts)));
-        }
-        if !self.register_converters.is_empty() {
-            let entries = self.register_converters.iter();
-            sections.push((
-                "RegisterConverters",
-                entries.map(|(k, v)| (k.to_string(), v.clone())).collect(),
-            ));
-        }
-        let mut out = String::new();
-        for (name, entries) in sections {
-            out.push_str(&format!("[{name}]\n"));
-            for (key, value) in entries {
-                out.push_str(&format!("{key} = {value}\n"));
-            }
-            out.push('\n');
+        for (&addr, &slot) in &self.register_charts {
+            out.entry(addr).or_default().chart = Some(slot);
         }
         out
+    }
+
+    /// Arquivo pode vir de outra máquina: o id do converter vira nome de arquivo, o label vai para a
+    /// tela e a cor indexa a paleta.
+    fn validate(&mut self) {
+        if !crate::convert::valid_id(&self.default_converter) {
+            self.default_converter.clear();
+        }
+        self.register_converters
+            .retain(|_, id| crate::convert::valid_id(id));
+        self.register_labels = std::mem::take(&mut self.register_labels)
+            .into_iter()
+            .filter_map(|(addr, text)| Some((addr, label(&text)?)))
+            .collect();
+        self.register_charts.retain(|_, slot| (0..8).contains(slot));
+    }
+
+    /// Grava num `.tmp` ao lado e renomeia: uma queda no meio não deixa o arquivo cortado.
+    pub fn save(&self, path: &Path) -> io::Result<()> {
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        fs::write(&tmp, self.to_toml().map_err(io::Error::other)?)?;
+        fs::rename(&tmp, path)
+    }
+
+    fn to_toml(&self) -> Result<String, toml::ser::Error> {
+        // sem os mapas: chave inteira não vira `Table` (`KeyNotString`), e eles vão em `[registers]`
+        let flat = Settings {
+            register_formats: BTreeMap::new(),
+            register_float_endians: BTreeMap::new(),
+            register_converters: BTreeMap::new(),
+            register_labels: BTreeMap::new(),
+            register_charts: BTreeMap::new(),
+            ..self.clone()
+        };
+        let mut fields = toml::Table::try_from(flat)?;
+        for key in REGISTER_MAPS {
+            fields.remove(key);
+        }
+        let mut out = format!("version = {FORMAT_VERSION}\n{}", toml::to_string(&fields)?);
+        let registers = self.registers();
+        if !registers.is_empty() {
+            // à mão: o serializer gravaria um `[registers.N]` por endereço, não uma linha inline
+            out.push_str("\n[registers]\n");
+            for (addr, register) in registers {
+                out.push_str(&format!("{addr} = {}\n", toml::Value::try_from(register)?));
+            }
+        }
+        Ok(out)
     }
 }
 
@@ -336,7 +288,7 @@ mod tests {
 
     #[test]
     fn missing_file_gives_the_qmodmaster_defaults() {
-        let settings = Settings::load(&temp("missing.ini")).unwrap();
+        let settings = Settings::load(&temp("missing.toml")).unwrap();
         assert_eq!(settings, Settings::default());
         assert_eq!(settings.tcp_port, "502");
         assert_eq!(settings.time_out, "0");
@@ -346,61 +298,8 @@ mod tests {
     }
 
     #[test]
-    fn reads_the_lowercase_ini_written_by_fmodmaster() {
-        // o fModMaster.ini do repositório Python, como o configparser grava
-        let text = "[TCP]\ntcpport = 502\nslaveip = 10.6.6.1\n\n[RTU]\nbaud = 19200\nparity = Even\n\n\
-            [Var]\nmaxnooflines = 0\ntimeout = 0\n\n[Session]\nmodbusmode = 1\nfunctioncode = 2\n\
-            startaddr = 58\nnoofregs = 2\nbase = 1\ndefaultbase = 3\nfloatendian = 2\n\n\
-            [RegisterFormats]\n0 = 3\n58 = 2\nlixo = 1\n\n[RegisterFloatEndians]\n0 = 1\n";
-        let mut settings = Settings::default();
-        settings.overlay(&parse_ini(text));
-        assert_eq!(settings.slave_ip, "10.6.6.1");
-        assert_eq!(settings.baud, "19200");
-        assert_eq!(settings.parity, "Even");
-        assert_eq!(settings.max_no_of_lines, "60"); // 0 volta ao padrão
-        assert_eq!(settings.modbus_mode, 1);
-        assert_eq!((settings.start_addr, settings.no_of_regs), (58, 2));
-        assert_eq!(settings.default_base, 3); // DefaultBase vale sobre Base
-        assert_eq!(settings.float_endian, 2);
-        assert_eq!(settings.register_formats, BTreeMap::from([(0, 3), (58, 2)]));
-        assert_eq!(settings.register_float_endians, BTreeMap::from([(0, 1)]));
-    }
-
-    #[test]
-    fn converter_ids_that_are_not_file_names_are_dropped() {
-        let mut settings = Settings::default();
-        settings.overlay(&parse_ini(
-            "[RegisterConverters]\n10 = ok_id\n11 = ../x\nabc = y\n",
-        ));
-        assert_eq!(
-            settings.register_converters,
-            BTreeMap::from([(10, "ok_id".to_owned())])
-        );
-    }
-
-    #[test]
-    fn labels_and_chart_slots_are_validated() {
-        let mut settings = Settings::default();
-        settings.overlay(&parse_ini(
-            "[RegisterLabels]\n1 =  Pressão  \n2 = \n3 = 0123456789012345678901234567890123456789\n\
-             [RegisterCharts]\n1 = 7\n2 = 8\n",
-        ));
-        assert_eq!(settings.register_labels[&1], "Pressão");
-        assert!(!settings.register_labels.contains_key(&2));
-        assert_eq!(settings.register_labels[&3].chars().count(), 32);
-        assert_eq!(settings.register_charts, BTreeMap::from([(1, 7)]));
-    }
-
-    #[test]
-    fn invalid_numbers_keep_the_default() {
-        let mut settings = Settings::default();
-        settings.overlay(&parse_ini("[Session]\nSlaveID = abc\nScanRate = 250\n"));
-        assert_eq!((settings.slave_id, settings.scan_rate), (1, 250));
-    }
-
-    #[test]
-    fn save_and_load_round_trip_with_qmodmaster_keys() {
-        let path = temp("roundtrip.ses");
+    fn save_and_load_round_trip_in_toml() {
+        let path = temp("roundtrip.rmm-session.toml");
         let mut settings = Settings {
             slave_ip: "192.168.0.10".into(),
             modbus_mode: 1,
@@ -408,25 +307,68 @@ mod tests {
             ..Settings::default()
         };
         settings.register_formats.insert(10, 3);
-        settings.register_float_endians.insert(10, 3);
+        settings.register_float_endians.insert(-1, 3);
         settings
             .register_converters
             .insert(100, "UInt32_abcd".into());
         settings
             .register_labels
-            .insert(100, "Tensão L1 = fase".into());
+            .insert(100, "Tensão \"L1\" = fase".into());
         settings.register_charts.insert(100, 3);
         settings.default_converter = "int16_div10".into();
         settings.save(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
-        assert!(text.contains("[Session]\nModBusMode = 1\n"), "{text}");
-        assert!(text.contains("SlaveIP = 192.168.0.10"));
         assert!(
-            text.contains("[RegisterConverters]\n100 = UInt32_abcd\n"),
+            text.starts_with("version = 1\ntcpPort = \"502\"\n"),
             "{text}"
         );
-        assert!(text.contains("DefaultConverter = int16_div10\n"), "{text}");
+        assert!(text.contains("slaveIp = \"192.168.0.10\"\n"), "{text}");
+        assert!(text.contains("modbusMode = 1\n"), "{text}");
+        let registers = "\n[registers]\n-1 = { floatEndian = 3 }\n10 = { format = 3 }\n\
+            100 = { converter = \"UInt32_abcd\", label = 'Tensão \"L1\" = fase', chart = 3 }\n";
+        assert!(text.ends_with(registers), "{text}");
+        assert!(!text.contains("registerFormats"), "{text}");
         assert_eq!(Settings::load(&path).unwrap(), settings);
+        assert!(!fs::exists(path.with_extension("toml.tmp")).unwrap());
         fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn missing_keys_keep_the_defaults_and_values_are_validated() {
+        let text = "version = 1\nslaveId = 7\nnewKey = true\ndefaultConverter = \"../x\"\n\
+            [registers]\n1 = { converter = \"ok_id\", chart = 9, label = \"  Pressão  \" }\n\
+            2 = { converter = \"../x\", label = \" \" }\n\
+            3 = { label = \"0123456789012345678901234567890123456789\" }\n";
+        let settings = Settings::parse(text).unwrap();
+        assert_eq!(settings.slave_id, 7);
+        assert_eq!(settings.tcp_port, "502");
+        assert_eq!(settings.default_converter, "");
+        assert_eq!(
+            settings.register_converters,
+            BTreeMap::from([(1, "ok_id".to_owned())])
+        );
+        assert!(settings.register_charts.is_empty());
+        assert_eq!(settings.register_labels[&1], "Pressão");
+        assert!(!settings.register_labels.contains_key(&2));
+        assert_eq!(settings.register_labels[&3].chars().count(), 32);
+    }
+
+    #[test]
+    fn bad_files_are_errors_not_silent_defaults() {
+        for text in [
+            "version = 1\nslaveIp = 10.0.0.1\n",        // valor sem aspas
+            "version = 1\nslaveId = 7\ntcpPort = \"50", // cortado no meio
+            "slaveId = 7\n",                            // sem versão
+            "version = 0\n",
+            "version = \"1\"\n",
+            "version = 2\n",                    // mais nova que o app
+            "version = 1\nslaveId = \"abc\"\n", // tipo errado
+            "version = 1\ntcpPort = 502\n",
+            "version = 1\nregisters = 3\n",
+            "version = 1\n[registers]\nx = { format = 3 }\n",
+            "[TCP]\nTCPPort = 502\n", // INI do qModMaster
+        ] {
+            assert!(Settings::parse(text).is_err(), "{text}");
+        }
     }
 }

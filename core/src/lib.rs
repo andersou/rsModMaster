@@ -1,5 +1,5 @@
 //! Núcleo do rsModMaster, sem UI: o mestre Modbus RTU/TCP ([`master`]), os quadros e a
-//! decodificação do bus monitor ([`frame`]), o INI do qModMaster ([`settings`]) e os comandos de
+//! decodificação do bus monitor ([`frame`]), configurações e sessão em TOML ([`settings`]) e os comandos de
 //! diagnóstico do Tools (ping e porta TCP).
 
 pub mod convert;

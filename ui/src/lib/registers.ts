@@ -12,8 +12,8 @@ export type Endian = 0 | 1 | 2 | 3;
 export const ENDIAN_LABELS = ['ABCD (BE_BE)', 'DCBA (LE_LE)', 'BADC (BE_LE)', 'CDAB (LE_BE)'] as const;
 export const BASE_LABELS: Record<Base, string> = { bin: 'Bin', dec: 'Dec', hex: 'Hex', float: 'Float' };
 
-// No INI há duas codificações: `[Session] Base` usa o índice do qModMaster; `[RegisterFormats]`
-// usa o valor do enum do fModMaster (a base numérica, 3 = float).
+// Na sessão há duas codificações: `defaultBase` usa o índice do qModMaster; `format` em
+// `[registers]` usa o valor do enum do fModMaster (a base numérica, 3 = float).
 const SESSION_BASES: Record<number, Base> = { 0: 'hex', 1: 'dec', 2: 'bin', 3: 'float', 10: 'dec', 16: 'hex' };
 export const baseFromSession = (n: number): Base => SESSION_BASES[n] ?? 'dec';
 export const baseToSession = (b: Base): number => ({ hex: 0, dec: 1, bin: 2, float: 3 })[b];
@@ -61,7 +61,7 @@ export const FUNCTIONS: readonly FunctionSpec[] = [
 ];
 
 export const functionSpec = (code: number) => FUNCTIONS.find((f) => f.code === code) ?? FUNCTIONS[0];
-/** Índice salvo no INI; 15 e 16 também são aceitos como o próprio código. */
+/** Índice salvo na sessão; 15 e 16 também são aceitos como o próprio código. */
 export const functionFromSetting = (raw: number) => (raw === 0x0f || raw === 0x10 ? functionSpec(raw) : (FUNCTIONS[raw] ?? FUNCTIONS[0]));
 export const functionIndex = (code: number) => Math.max(0, FUNCTIONS.findIndex((f) => f.code === code));
 export const clampQuantity = (qty: number, spec: FunctionSpec) => Math.min(Math.max(Number.isFinite(qty) ? qty : spec.min, spec.min), spec.max);

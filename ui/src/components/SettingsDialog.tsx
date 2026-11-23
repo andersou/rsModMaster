@@ -72,7 +72,7 @@ export function SettingsDialog() {
     lines: () => !digits(draft.maxNoOfLines),
     baseAddr: () => !digits(draft.baseAddr),
   };
-  // valor do INI fora da lista (qModMaster no Linux usa Up/Down) continua escolhível
+  // valor da sessão fora da lista (qModMaster no Linux usa Up/Down) continua escolhível
   const rtsModes = () => [...new Set([...RTS_MODES, draft.rts])];
   const anyInvalid = () => Object.values(invalid).some((check) => check());
   const save = async (event: Event) => {
@@ -127,7 +127,7 @@ export function SettingsDialog() {
               <option value="1">1</option>
               <option value="2">2</option>
             </SelectField>
-            {/* o valor gravado no INI segue em inglês, como o qModMaster espera */}
+            {/* o valor gravado na sessão segue em inglês */}
             <SelectField label={t('settings.parity')} value={draft.parity} onChange={(e) => setDraft('parity', e.currentTarget.value)}>
               <option value="None">{t('settings.parityNone')}</option>
               <option value="Even">{t('settings.parityEven')}</option>

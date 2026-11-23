@@ -1,6 +1,6 @@
 // Aviso de versão nova: na inicialização, a última release do GitHub (sem rascunhos nem
 // pré-releases). A atualização é manual: o botão da barra de título abre a página da release.
-// A preferência fica em localStorage, como o tema (não vai no INI da sessão).
+// A preferência fica em localStorage, como o tema (não vai na sessão).
 
 import { createSignal } from 'solid-js';
 import { isNewer } from './lib/update';
