@@ -48,7 +48,7 @@ jobs:
       - run: cargo test --workspace --locked
 
   # Próxima versão (semantic-release em dry-run). Sem commit que gere versão, `version` fica vazio e
-  # os builds saem só como artefatos do workflow, com a versão 0.0.0-dev.
+  # os builds saem só como artefatos do workflow, com a versão do Cargo.toml (a da última release).
   version:
     name: Next version
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next')

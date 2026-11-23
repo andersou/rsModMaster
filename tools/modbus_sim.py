@@ -1,8 +1,12 @@
 """Escravo Modbus TCP de teste (pymodbus 3.13): 100 bobinas 1,0,1,0..., 100 entradas 0,1,0,1...,
-holding registers 0..99 e input registers 1000..1099 a partir do endereço 0; o registrador 9 varia
-como senoide e o 10 como rampa (para o gráfico). É o escravo de core/tests/simulator.rs.
+holding registers 0..99 e input registers 1000..1099 a partir do endereço 0. É o escravo de
+core/tests/simulator.rs. Com --vary, o registrador 9 vira senoide e o 10 rampa (para ver o gráfico);
+sem ele os valores ficam fixos, como o teste espera.
 
-    uv run --with 'pymodbus>=3.13' python tools/modbus_sim.py 5020
+    uv run --with 'pymodbus==3.13.*' python tools/modbus_sim.py 5020 [--vary]
+
+A versão fica fixa: o pymodbus troca os blocos holding/input de jeitos diferentes entre versões
+(no 3.13, o `ir=` é servido na FC 03; ver abaixo).
 """
 import asyncio, math, sys
 from pymodbus.datastore import ModbusDeviceContext, ModbusSequentialDataBlock, ModbusServerContext
@@ -33,7 +37,8 @@ async def vary(port):
         await asyncio.sleep(0.1)
 
 async def main():
-    asyncio.create_task(vary(int(sys.argv[1])))
+    if "--vary" in sys.argv:
+        asyncio.create_task(vary(int(sys.argv[1])))
     await StartAsyncTcpServer(context=server_ctx, address=("127.0.0.1", int(sys.argv[1])))
 
 asyncio.run(main())
