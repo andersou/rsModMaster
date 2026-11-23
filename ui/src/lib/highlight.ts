@@ -5,28 +5,29 @@
 
 import type { HighlighterCore, ThemedToken } from 'shiki/core';
 
-const THEME = 'tokyo-night';
+const THEMES = { dark: 'tokyo-night', light: 'github-light' } as const;
 let highlighter: Promise<HighlighterCore> | undefined;
 
 function load(): Promise<HighlighterCore> {
   highlighter ??= (async () => {
-    const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, lua, theme] = await Promise.all([
+    const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, lua, dark, light] = await Promise.all([
       import('shiki/core'),
       import('shiki/engine/javascript'),
       import('@shikijs/langs/lua'),
       import('@shikijs/themes/tokyo-night'),
+      import('@shikijs/themes/github-light'),
     ]);
     return createHighlighterCore({
       langs: [lua.default],
-      themes: [theme.default],
+      themes: [dark.default, light.default],
       engine: createJavaScriptRegexEngine({ forgiving: true }),
     });
   })();
   return highlighter;
 }
 
-/** Linhas de tokens coloridos do código Lua. */
-export async function highlightLua(code: string): Promise<ThemedToken[][]> {
+/** Linhas de tokens coloridos do código Lua, no tema da janela. */
+export async function highlightLua(code: string, theme: 'light' | 'dark'): Promise<ThemedToken[][]> {
   const h = await load();
-  return h.codeToTokens(code, { lang: 'lua', theme: THEME }).tokens;
+  return h.codeToTokens(code, { lang: 'lua', theme: THEMES[theme] }).tokens;
 }

@@ -15,7 +15,6 @@
         "minWidth": 900,
         "minHeight": 640,
         "center": true,
-        "theme": "Dark",
         "backgroundColor": "#0d1018",
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,

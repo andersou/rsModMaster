@@ -1,16 +1,24 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Janela principal: eventos do core, barra de título própria e o link do GitHub no About. Os comandos do app (src/main.rs) já são liberados por padrão; diálogos de arquivo e o log abrem pelo Rust.",
-  "windows": ["main"],
+  "description": "Janela principal: eventos do core, barra de título própria, tema da janela e o link do GitHub no About. Os comandos do app (src/main.rs) já são liberados por padrão; diálogos de arquivo e o log abrem pelo Rust.",
+  "windows": [
+    "main"
+  ],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten",
     "core:window:allow-start-dragging",
     "core:window:allow-internal-toggle-maximize",
+    "core:window:allow-set-background-color",
+    "core:window:allow-set-theme",
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/*" }]
+      "allow": [
+        {
+          "url": "https://github.com/*"
+        }
+      ]
     }
   ]
 }

@@ -1,6 +1,8 @@
 import { app } from '../appStore';
 import { api } from '../api';
+import { setThemePref, themePref } from '../theme';
 import { toast } from '../toasts';
+import { Segmented } from './Segmented';
 import { Icon } from './Icon';
 
 function Action(props: { icon: string; label: string; disabled?: boolean; onClick: () => void }) {
@@ -32,6 +34,18 @@ export function TitleBar() {
         <Action icon="file-text" label="Log File" onClick={openLog} />
         <Action icon="settings-2" label="Settings" onClick={() => app.setDialog('settings')} />
         <Action icon="info" label="About" onClick={() => app.setDialog('about')} />
+      </div>
+      <div class="titlebar-group">
+        <Segmented
+          label="Theme"
+          value={themePref()}
+          onChange={setThemePref}
+          options={[
+            { value: 'system', label: <Icon name="monitor" />, title: 'Theme: follow the system' },
+            { value: 'light', label: <Icon name="sun" />, title: 'Theme: light' },
+            { value: 'dark', label: <Icon name="moon" />, title: 'Theme: dark' },
+          ]}
+        />
       </div>
     </header>
   );

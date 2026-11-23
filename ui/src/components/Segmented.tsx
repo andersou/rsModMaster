@@ -1,9 +1,9 @@
-import { For } from 'solid-js';
+import { For, type JSX } from 'solid-js';
 
 /** Escolha entre poucas opções (radio group). */
 export function Segmented<T extends string>(props: {
   label: string;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: JSX.Element; title?: string }[];
   value: T;
   disabled?: boolean;
   /** num diálogo: o foco inicial vai para a opção escolhida, não para a primeira */
@@ -27,6 +27,8 @@ export function Segmented<T extends string>(props: {
             type="button"
             role="radio"
             aria-checked={props.value === option.value}
+            aria-label={option.title}
+            title={option.title}
             aria-disabled={props.disabled}
             tabindex={props.value === option.value ? 0 : -1}
             autofocus={props.autofocus && props.value === option.value}

@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, on } from 'solid-js';
 import type { ThemedToken } from 'shiki/core';
 import { highlightLua } from '../lib/highlight';
+import { theme } from '../theme';
 
 /** Editor mínimo com destaque de sintaxe: o código colorido fica por baixo e o textarea
  *  transparente por cima, então cursor, seleção, desfazer e colar continuam os do sistema. */
@@ -15,11 +16,11 @@ export function CodeEditor(props: {
   let seq = 0;
   createEffect(
     on(
-      () => props.value,
-      async (code) => {
+      [() => props.value, theme],
+      async ([code, current]) => {
         const mine = ++seq;
         try {
-          const lines = await highlightLua(code);
+          const lines = await highlightLua(code, current);
           if (mine === seq) setTokens(lines);
         } catch {
           setTokens(null); // sem destaque, o texto continua visível pelo textarea
