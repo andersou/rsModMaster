@@ -2310,7 +2310,7 @@ dependencies = [
 
 [[package]]
 name = "modmaster-core"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "log",
  "mlua",
@@ -3155,7 +3155,7 @@ dependencies = [
 
 [[package]]
 name = "rsmodmaster"
-version = "0.4.1"
+version = "0.5.0"
 dependencies = [
  "log",
  "modmaster-core",
