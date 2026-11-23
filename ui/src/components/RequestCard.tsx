@@ -1,6 +1,6 @@
 import { For, Show } from 'solid-js';
 import { app } from '../appStore';
-import { BASE_LABELS, type Base, ENDIAN_LABELS, FUNCTIONS } from '../lib/registers';
+import { BASE_LABELS, type Base, ENDIAN_LABELS, FUNCTIONS, toEndian } from '../lib/registers';
 import { SelectField, TextField } from './Field';
 import { Icon } from './Icon';
 import { Segmented } from './Segmented';
@@ -77,6 +77,7 @@ export function RequestCard() {
             {(label, i) => (
               <option value={`float:${i()}`} disabled={app.singleRegisterWrite()}>
                 Float {label}
+                {i() === toEndian(app.settings.floatEndian) ? ' · default' : ''}
               </option>
             )}
           </For>
