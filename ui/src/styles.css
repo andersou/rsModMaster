@@ -496,6 +496,7 @@ a:hover { color: var(--link-hover); }
 .row.nowrap { flex-wrap: nowrap; }
 .row.nowrap .target { flex: 1; }
 .field.narrow { width: 120px; }
+.field.format-field { width: 168px; }
 .field.grow { flex: 1; min-width: 200px; }
 .field.wide { grid-column: 1 / -1; }
 .addr { display: flex; align-items: center; gap: 8px; }

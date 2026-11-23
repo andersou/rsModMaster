@@ -40,6 +40,9 @@ pub struct Settings {
     /// Formato padrão no índice do qModMaster: 0 = Hex, 1 = Dec, 2 = Bin, 3 = Float.
     pub default_base: i32,
     pub float_endian: i32,
+    /// Custom converter usado como formato padrão da tabela (vazio = nenhum).
+    #[serde(default)]
+    pub default_converter: String,
     /// Formato por endereço, quando difere do padrão (2 = Bin, 10 = Dec, 16 = Hex, 3 = Float).
     pub register_formats: BTreeMap<i64, i32>,
     pub register_float_endians: BTreeMap<i64, i32>,
@@ -82,6 +85,7 @@ impl Default for Settings {
             no_of_regs: 0,
             default_base: 1,
             float_endian: 0,
+            default_converter: String::new(),
             register_formats: BTreeMap::new(),
             register_float_endians: BTreeMap::new(),
             register_converters: BTreeMap::new(),
@@ -183,6 +187,13 @@ impl Settings {
         int(&mut self.default_base, "Session", "base");
         int(&mut self.default_base, "Session", "defaultbase");
         int(&mut self.float_endian, "Session", "floatendian");
+        if let Some(id) = get("Session", "defaultconverter") {
+            self.default_converter = if crate::convert::valid_id(&id) {
+                id
+            } else {
+                String::new()
+            };
+        }
         let map = |section: &str| -> Option<BTreeMap<i64, i32>> {
             let entries = ini.get(section)?.iter();
             Some(
@@ -270,6 +281,11 @@ impl Settings {
                 .into(),
             ),
         ];
+        if !self.default_converter.is_empty() {
+            sections[3]
+                .1
+                .push(("DefaultConverter".into(), self.default_converter.clone()));
+        }
         let pairs = |map: &BTreeMap<i64, i32>| -> Vec<(String, String)> {
             map.iter()
                 .map(|(k, v)| (k.to_string(), v.to_string()))
@@ -400,6 +416,7 @@ mod tests {
             .register_labels
             .insert(100, "Tensão L1 = fase".into());
         settings.register_charts.insert(100, 3);
+        settings.default_converter = "int16_div10".into();
         settings.save(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("[Session]\nModBusMode = 1\n"), "{text}");
@@ -408,6 +425,7 @@ mod tests {
             text.contains("[RegisterConverters]\n100 = UInt32_abcd\n"),
             "{text}"
         );
+        assert!(text.contains("DefaultConverter = int16_div10\n"), "{text}");
         assert_eq!(Settings::load(&path).unwrap(), settings);
         fs::remove_file(path).unwrap();
     }

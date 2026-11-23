@@ -91,7 +91,9 @@ return {
 }
 ```
 
-- **Usar:** botão direito num registrador → seção *Converters*. A célula inicial mostra o valor e
+- **Usar:** botão direito num registrador → seção *Converters*, ou como **Default Format** da tabela
+  inteira (em blocos a partir do endereço inicial, sem passar por cima de registrador com formato
+  próprio; fica em `[Session] DefaultConverter`). A célula inicial mostra o valor e
   as seguintes mostram `—`, como num float. Erro do script aparece como `ERR` (mensagem no tooltip
   e num aviso) e o scan continua.
 - **Editar:** o diálogo Converters tem um editor com destaque de sintaxe (Shiki, como o

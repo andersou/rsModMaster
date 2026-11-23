@@ -1,6 +1,6 @@
 import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
 import { app } from '../appStore';
-import { BASE_LABELS, type Base, type Cell, ENDIAN_LABELS, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
+import { BASE_LABELS, type Base, type Cell, ENDIAN_LABELS, toEndian, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
 import { shortcut } from '../platform';
 import { ChartView } from './ChartView';
 import { Icon } from './Icon';
@@ -17,6 +17,14 @@ interface Menu {
 }
 
 /** Formato de um endereço pelo botão direito, como o menu de contexto do fModMaster. */
+/** Nome do formato padrão da tabela, para o "Reset to default". */
+const defaultLabel = () => {
+  const [kind, arg] = app.defaultFormat().split(':');
+  if (kind === 'conv') return app.catalog().converters.find((c) => c.id === arg)?.name ?? arg;
+  if (kind === 'float') return `Float ${ENDIAN_LABELS[Number(arg)]}`;
+  return BASE_LABELS[kind as Base];
+};
+
 const MENU_ITEMS: { label: string; base: Base; endian?: Endian }[] = [
   { label: 'Dec', base: 'dec' },
   { label: 'Bin', base: 'bin' },
@@ -121,7 +129,10 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
             onClick={() => pick(item.base, item.endian)}
           >
             <Icon name="check" class="menu-check" />
-            {item.label}
+            <span class="spacer">{item.label}</span>
+            <Show when={item.base === 'float' && item.endian === toEndian(app.settings.floatEndian)}>
+              <span class="menu-hint">default</span>
+            </Show>
           </button>
         )}
       </For>
@@ -164,14 +175,14 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
       <button
         role="menuitem"
         type="button"
-        disabled={app.scanning() || (!current().custom && current().converter === null)}
+        disabled={app.scanning() || !current().custom}
         onClick={() => {
           app.resetFormat(props.menu.address);
           props.onClose();
         }}
       >
         <span class="menu-check" />
-        Reset to default ({BASE_LABELS[app.form.format]})
+        Reset to default ({defaultLabel()})
       </button>
       </Show>
     </div>

@@ -1,6 +1,6 @@
 import { For, Show } from 'solid-js';
 import { app } from '../appStore';
-import { BASE_LABELS, type Base, FUNCTIONS } from '../lib/registers';
+import { BASE_LABELS, type Base, ENDIAN_LABELS, FUNCTIONS } from '../lib/registers';
 import { SelectField, TextField } from './Field';
 import { Icon } from './Icon';
 import { Segmented } from './Segmented';
@@ -9,7 +9,7 @@ const ADDRESS_BASES = [
   { value: 'dec', label: 'Dec' },
   { value: 'hex', label: 'Hex' },
 ] as const;
-const FORMATS: Base[] = ['bin', 'dec', 'hex', 'float'];
+const BASES: Base[] = ['dec', 'bin', 'hex'];
 
 /** Função, endereço inicial, quantidade e formato padrão da tabela. */
 export function RequestCard() {
@@ -66,20 +66,34 @@ export function RequestCard() {
         />
         <SelectField
           label="Default Format"
-          class="narrow"
-          value={app.form.format}
+          class="format-field"
+          value={app.defaultFormat()}
           disabled={locked() || app.spec().bits}
-          onChange={(e) => app.setForm('format', e.currentTarget.value as Base)}
+          onChange={(e) => app.setDefaultFormat(e.currentTarget.value)}
         >
-          <For each={FORMATS}>
-            {(base) => (
-              <option value={base} disabled={base === 'float' && app.singleRegisterWrite()}>
-                {BASE_LABELS[base]}
+          {/* as mesmas opções do menu de contexto */}
+          <For each={BASES}>{(base) => <option value={base}>{BASE_LABELS[base]}</option>}</For>
+          <For each={ENDIAN_LABELS}>
+            {(label, i) => (
+              <option value={`float:${i()}`} disabled={app.singleRegisterWrite()}>
+                Float {label}
               </option>
             )}
           </For>
+          <Show when={app.catalog().converters.length}>
+            <optgroup label="Converters">
+              <For each={app.catalog().converters}>
+                {(c) => (
+                  <option value={`conv:${c.id}`} disabled={c.registers > 1 && app.singleRegisterWrite()}>
+                    {c.name}
+                    {c.registers > 1 ? ` ×${c.registers}` : ''}
+                  </option>
+                )}
+              </For>
+            </optgroup>
+          </Show>
         </SelectField>
-        <Show when={app.form.format === 'dec' && !app.spec().bits}>
+        <Show when={app.form.format === 'dec' && !app.form.converter && !app.spec().bits}>
           <label class="check signed">
             <input type="checkbox" checked={app.form.signed} disabled={locked()} onChange={(e) => app.setForm('signed', e.currentTarget.checked)} />
             Signed

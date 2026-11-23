@@ -147,6 +147,9 @@ export interface Grid {
   valid: boolean;
   /** custom converter por endereço inicial (id do arquivo .lua) */
   converters?: Record<number, string>;
+  /** converter do formato padrão: cobre, em blocos a partir do início, os registradores sem
+   *  formato nem converter próprio */
+  defaultConverter?: string;
   /** registradores de cada converter carregado; id ausente = arquivo não encontrado */
   sizes?: Record<string, number>;
   /** resultado do decode por endereço inicial, vindo do core */
@@ -225,8 +228,13 @@ export function buildRows(grid: Grid): Row[] {
       used.set(address, { ...continuation(address, 'dec', 0, tooltip, value !== undefined), overridden: true });
       continue;
     }
-    const id = converters[address];
+    const own = converters[address];
+    let id: string | undefined = own ?? (formats[address] === undefined && !grid.bits ? grid.defaultConverter || undefined : undefined);
     const size = id === undefined ? 0 : (sizes[id] ?? 1);
+    // o bloco do converter padrão não passa por cima de registrador com formato ou converter próprio
+    if (own === undefined && id !== undefined) {
+      for (let k = 1; k < size; k++) if (formats[address + k] !== undefined || converters[address + k] !== undefined) id = undefined;
+    }
     // converter que cabe no intervalo; cortado no fim, as células voltam ao formato padrão
     if (id !== undefined && i + size <= count) {
       const missing = grid.values.length < i + size;
@@ -247,7 +255,7 @@ export function buildRows(grid: Grid): Row[] {
         endian: 0,
         editable: grid.write,
         hasValue: grid.valid && !missing && result?.value !== undefined,
-        overridden: true,
+        overridden: own !== undefined,
         tooltip: `${range} · ${id}${error ? `\n${error}` : ''}`,
         converter: id,
         error: grid.valid ? error : undefined,
@@ -255,7 +263,7 @@ export function buildRows(grid: Grid): Row[] {
       });
       for (let k = 1; k < size; k++) {
         const cell = continuation(address + k, 'dec', 0, `Address : ${address + k}`, grid.values[i + k] !== undefined);
-        used.set(address + k, { ...cell, overridden: true });
+        used.set(address + k, { ...cell, overridden: own !== undefined });
       }
       i += size - 1;
       continue;

@@ -239,3 +239,39 @@ describe('custom converters', () => {
     expect(validateFormat(3, 'float', {}, { 4: 'st' }, sizes)).toMatch(/has a converter/);
   });
 });
+
+describe('converter como formato padrão', () => {
+  const sizes = { u32: 2 };
+  it('cobre em blocos os registradores sem formato próprio; o resto do fim volta ao padrão', () => {
+    const g = grid({ count: 5, values: [0, 1, 2, 3, 4], defaultConverter: 'u32', sizes, formats: { 2: 'hex' }, converted: { 0: { value: '1' }, 3: { value: '12' } } });
+    const cells = buildRows(g)[0].cells.slice(0, 5);
+    expect(cells.map((c) => [c.kind, c.text])).toEqual([
+      ['value', '1'],
+      ['continuation', '—'],
+      ['value', '0002'],
+      ['value', '12'],
+      ['continuation', '—'],
+    ]);
+    expect(cells[0].converter).toBe('u32');
+    expect(cells[0].overridden).toBe(false); // padrão não leva *
+    expect(cells[2].overridden).toBe(true);
+  });
+
+  it('o bloco não engole registrador com formato próprio: sem caber, fica o valor cru', () => {
+    const g = grid({ count: 4, values: [0, 0x3f80, 0, 7], defaultConverter: 'u32', sizes, formats: { 1: 'float' } });
+    const cells = buildRows(g)[0].cells.slice(0, 4);
+    expect(cells.map((c) => [c.kind, c.text])).toEqual([
+      ['value', '0'],
+      ['value', '1'],
+      ['continuation', '—'],
+      ['value', '7'], // último do intervalo: o bloco de 2 não cabe
+    ]);
+    expect(cells[0].converter).toBeUndefined();
+  });
+
+  it('converter próprio vence o padrão; bobinas ignoram', () => {
+    const g = grid({ count: 2, values: [1, 2], defaultConverter: 'u32', sizes: { u32: 2, one: 1 }, converters: { 0: 'one' } });
+    expect(buildRows(g)[0].cells.slice(0, 2).map((c) => c.converter)).toEqual(['one', undefined]);
+    expect(buildRows(grid({ count: 2, bits: true, values: [1, 0], defaultConverter: 'u32', sizes }))[0].cells[0].converter).toBeUndefined();
+  });
+});

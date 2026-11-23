@@ -27,6 +27,8 @@ export interface Settings {
   /** índice do qModMaster: 0 Hex, 1 Dec, 2 Bin, 3 Float */
   defaultBase: number;
   floatEndian: number;
+  /** custom converter usado como formato padrão da tabela ('' = nenhum) */
+  defaultConverter: string;
   /** endereço -> base (2, 10, 16 ou 3 = float) */
   registerFormats: Record<string, number>;
   registerFloatEndians: Record<string, number>;

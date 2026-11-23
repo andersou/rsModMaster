@@ -1,7 +1,7 @@
 // Estado da tela em sinais e stores, e as ações que chamam o core. Porte do MainViewController do
 // fModMaster: os mesmos estados (desconectado, conectado, em scan) e as mesmas regras.
 
-import { createEffect, createMemo, createSignal, on } from 'solid-js';
+import { createEffect, createMemo, createSignal, on, untrack } from 'solid-js';
 import { createStore, reconcile, unwrap } from 'solid-js/store';
 import { api } from './api';
 import {
@@ -66,6 +66,8 @@ const [form, setForm] = createStore({
   addrHex: false,
   qty: '1',
   format: 'dec' as Base,
+  /** converter usado como formato padrão ('' = o `format` acima) */
+  converter: '',
   signed: false,
 });
 
@@ -164,8 +166,9 @@ const grid = createMemo<Grid>(() => ({
   count: quantity(),
   bits: spec().bits,
   write: spec().write,
-  signed: form.signed && form.format === 'dec',
+  signed: form.signed && form.format === 'dec' && !form.converter,
   defaultBase: form.format,
+  defaultConverter: form.converter,
   defaultEndian: toEndian(settings.floatEndian),
   formats: formats(),
   endians: endians(),
@@ -181,18 +184,19 @@ const grid = createMemo<Grid>(() => ({
 let decodeSeq = 0;
 let lastConverterError: string | undefined;
 createEffect(
-  on([() => table(), assigned, sizes, startAddress, quantity, () => spec().bits], async () => {
+  on([() => table(), assigned, sizes, startAddress, quantity, () => spec().bits, () => form.converter], async () => {
     const seq = ++decodeSeq;
     const { values, valid, at } = table();
     const start = startAddress();
     const items: { address: number; id: string; regs: number[] }[] = [];
     if (valid && !spec().bits) {
-      for (const [addr, id] of Object.entries(assigned())) {
-        const address = Number(addr);
-        const size = sizes()[id];
-        const offset = address - start;
-        if (size === undefined || offset < 0 || offset + size > values.length) continue;
-        items.push({ address, id, regs: values.slice(offset, offset + size) });
+      // células de converter (próprio ou o padrão) que a grade monta, sem depender do resultado
+      const layout = untrack(() => buildRows({ ...grid(), converted: {} }));
+      for (const cell of layout.flatMap((r) => r.cells)) {
+        const size = cell.converter === undefined ? undefined : sizes()[cell.converter];
+        const offset = cell.address - start;
+        if (cell.kind !== 'value' || size === undefined || offset + size > values.length) continue;
+        items.push({ address: cell.address, id: cell.converter!, regs: values.slice(offset, offset + size) });
       }
     }
     if (!items.length) return setConverted({});
@@ -237,6 +241,7 @@ function loadForm() {
     addrHex: false,
     qty: String(clampQuantity(Math.max(settings.noOfRegs, 1), fn)),
     format: baseFromSession(settings.defaultBase),
+    converter: settings.defaultConverter ?? '',
   });
 }
 
@@ -249,6 +254,7 @@ function syncSettings() {
     startAddr: startAddress(),
     noOfRegs: int(form.qty, settings.noOfRegs),
     defaultBase: baseToSession(form.format),
+    defaultConverter: form.converter,
   });
 }
 
@@ -404,13 +410,26 @@ export const app = {
    *  ele é a 2ª metade de um float que começa no endereço anterior. */
   formatAt(address: number) {
     const own = formats()[address];
+    const conv = assigned()[address];
     return {
       base: own ?? form.format,
       endian: endians()[address] ?? toEndian(settings.floatEndian),
-      custom: own !== undefined,
+      custom: own !== undefined || conv !== undefined,
       floatOwner: formats()[address - 1] === 'float' ? address - 1 : null,
-      converter: assigned()[address] ?? null,
+      // o próprio, ou o do formato padrão quando o registrador não tem nada seu
+      converter: conv ?? (own === undefined && form.converter ? form.converter : null),
     };
+  },
+  /** Formato padrão como no menu: 'dec' | 'bin' | 'hex' | 'float:N' (ordem de bytes) | 'conv:id'. */
+  defaultFormat: () => (form.converter ? `conv:${form.converter}` : form.format === 'float' ? `float:${toEndian(settings.floatEndian)}` : form.format),
+  setDefaultFormat(value: string) {
+    const [kind, arg] = value.split(':');
+    if (kind === 'conv') setForm({ format: 'dec', converter: arg });
+    else if (kind === 'float') {
+      setForm({ format: 'float', converter: '' });
+      setSettings('floatEndian', toEndian(Number(arg))); // é a mesma Float Byte Order das configurações
+    } else setForm({ format: kind as Base, converter: '' });
+    void persist();
   },
   catalog,
   async reloadConverters() {
