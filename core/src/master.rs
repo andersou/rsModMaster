@@ -166,8 +166,7 @@ impl Master {
                 log::warn!("RTS not applied (ignored): {err}");
             }
         }
-        // 3,5 caracteres de 11 bits; acima de 19200 baud a especificação fixa 1,75 ms
-        let gap = Duration::from_micros((38_500_000 / u64::from(cfg.baud.max(1))).min(1750));
+        let gap = frame_gap(cfg.baud);
         self.state.lock().unwrap().link = Some(Link::Serial { port, gap });
         log::info!("RTU connected on {} @ {} baud", cfg.port, cfg.baud);
         Ok(())
@@ -222,6 +221,8 @@ impl Master {
         if !self.connected() {
             return Err("Not connected".into());
         }
+        // requisição inválida falharia em silêncio a cada volta da thread
+        frame::request_pdu(req.function, req.start, req.count, &req.values)?;
         self.stop_scan();
         let (stop, wait) = mpsc::channel();
         let (state, events) = (self.state.clone(), self.events.clone());
@@ -393,6 +394,15 @@ fn exchange(
             }
             Ok(reply[7..].to_vec())
         }
+    }
+}
+
+/// Silêncio entre quadros RTU: 3,5 caracteres de 11 bits; acima de 19200 baud (ou sem velocidade,
+/// como num pseudo-terminal) a especificação fixa 1,75 ms.
+fn frame_gap(baud: u32) -> Duration {
+    match baud {
+        1..=19200 => Duration::from_micros(38_500_000 / u64::from(baud)),
+        _ => Duration::from_micros(1750),
     }
 }
 
@@ -690,6 +700,15 @@ mod tests {
             ),
             "{first:?}"
         );
+    }
+
+    #[test]
+    fn rtu_frame_gap_follows_the_spec() {
+        assert_eq!(frame_gap(9600), Duration::from_micros(4010));
+        assert_eq!(frame_gap(1200), Duration::from_micros(32_083));
+        assert_eq!(frame_gap(19200), Duration::from_micros(2005));
+        assert_eq!(frame_gap(115_200), Duration::from_micros(1750));
+        assert_eq!(frame_gap(0), Duration::from_micros(1750));
     }
 
     #[test]

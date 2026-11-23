@@ -38,7 +38,18 @@ pub fn request_pdu(fc: u8, start: u16, count: u16, values: &[u16]) -> Result<Vec
             "Number of items must be 1..{limit} for function 0x{fc:02X}"
         ));
     }
-    let value = |i: usize| values.get(i).copied().unwrap_or(0);
+    // escrita: um valor por item, nem mais nem menos (nunca completar com 0 no equipamento)
+    let write = matches!(
+        fc,
+        WRITE_SINGLE_COIL | WRITE_SINGLE_REGISTER | WRITE_MULTIPLE_COILS | WRITE_MULTIPLE_REGISTERS
+    );
+    if write && values.len() != usize::from(count) {
+        return Err(format!(
+            "Write needs {count} value(s), got {}",
+            values.len()
+        ));
+    }
+    let value = |i: usize| values[i];
     match fc {
         WRITE_SINGLE_COIL => pdu.extend(if value(0) != 0 { [0xFF, 0x00] } else { [0, 0] }),
         WRITE_SINGLE_REGISTER => pdu.extend(value(0).to_be_bytes()),
@@ -315,6 +326,14 @@ mod tests {
             request_pdu(WRITE_MULTIPLE_REGISTERS, 1, 2, &[0x0A, 0x102]).unwrap(),
             [0x10, 0, 1, 0, 2, 4, 0, 0x0A, 1, 2]
         );
+    }
+
+    #[test]
+    fn writes_need_exactly_one_value_per_item() {
+        assert!(request_pdu(WRITE_SINGLE_REGISTER, 0, 1, &[]).is_err());
+        assert!(request_pdu(WRITE_MULTIPLE_REGISTERS, 0, 2, &[7]).is_err());
+        assert!(request_pdu(WRITE_MULTIPLE_COILS, 0, 2, &[1, 0, 1]).is_err());
+        assert!(request_pdu(READ_HOLDING_REGISTERS, 0, 2, &[]).is_ok());
     }
 
     #[test]

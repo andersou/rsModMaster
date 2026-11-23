@@ -170,8 +170,9 @@ async fn transaction(master: State<'_, Shared>, req: Request) -> Result<Outcome,
 }
 
 #[tauri::command]
-fn start_scan(master: State<'_, Shared>, req: Request, rate_ms: u64) -> Result<(), String> {
-    master.start_scan(req, Duration::from_millis(rate_ms.max(1)))
+async fn start_scan(master: State<'_, Shared>, req: Request, rate_ms: u64) -> Result<(), String> {
+    let master = master.inner().clone();
+    blocking(move || master.start_scan(req, Duration::from_millis(rate_ms.max(1)))).await?
 }
 
 #[tauri::command]
@@ -180,9 +181,11 @@ async fn stop_scan(master: State<'_, Shared>) -> Result<(), String> {
     blocking(move || master.stop_scan()).await
 }
 
+/// Espera o lock do link (uma transação em curso, até o timeout): fora da thread da janela.
 #[tauri::command]
-fn reset_counters(master: State<'_, Shared>) {
-    master.reset_counters();
+async fn reset_counters(master: State<'_, Shared>) -> Result<(), String> {
+    let master = master.inner().clone();
+    blocking(move || master.reset_counters()).await
 }
 
 #[tauri::command]
@@ -231,6 +234,9 @@ fn main() {
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
+                // o padrão (40 KB, apagando o anterior) perderia o histórico em minutos de scan
+                .max_file_size(2_000_000)
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3))
                 .targets([
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
