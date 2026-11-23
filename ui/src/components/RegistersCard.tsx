@@ -81,15 +81,20 @@ function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) =
   const bits = () => app.spec().bits;
   const signed = () => app.grid().signed;
   const text = () => app.cellText(props.cell);
+  const binary = () => props.cell.base === 'bin' && !bits() && props.cell.hasValue;
   const invalid = () => app.invalidCell() === props.cell.address || !inputValid(props.cell, text(), bits(), signed());
   return (
     <td
       class={`cell ${props.cell.kind}`}
-      classList={{ overridden: props.cell.overridden, bad: !app.grid().valid && props.cell.kind !== 'unused' }}
+      classList={{
+        overridden: props.cell.overridden,
+        bad: !app.grid().valid && props.cell.kind !== 'unused',
+        bin: binary(),
+      }}
       title={props.cell.tooltip || undefined}
       onContextMenu={(e) => props.onMenu(e, props.cell)}
     >
-      <Show when={props.cell.editable} fallback={props.cell.text}>
+      <Show when={props.cell.editable} fallback={binary() ? [props.cell.text.slice(0, 8), <wbr />, props.cell.text.slice(8)] : props.cell.text}>
         <input
           aria-label={props.cell.tooltip}
           classList={{ invalid: invalid() }}
@@ -141,7 +146,16 @@ export function RegistersCard() {
         </button>
       </div>
       <div class="grid-scroll">
-        <table class="grid" classList={{ write: write() }}>
+        {/* colunas iguais e fixas: nada pula no scan; Bin pede colunas mais largas (16 dígitos) */}
+        <table
+          class="grid"
+          classList={{ write: write(), single: app.quantity() === 1 }}
+          style={{ '--col': write() && app.rows().some((r) => r.cells.some((c) => c.base === 'bin' && c.editable)) ? '132px' : '104px' }}
+        >
+          <colgroup>
+            <col class="head-col" />
+            <For each={columns()}>{() => <col />}</For>
+          </colgroup>
           <thead>
             <tr>
               <th scope="col" class="corner" />

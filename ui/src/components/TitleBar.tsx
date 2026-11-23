@@ -3,9 +3,9 @@ import { api } from '../api';
 import { toast } from '../toasts';
 import { Icon } from './Icon';
 
-function Action(props: { icon: string; label: string; onClick: () => void }) {
+function Action(props: { icon: string; label: string; disabled?: boolean; onClick: () => void }) {
   return (
-    <button class="btn ghost square" type="button" title={props.label} aria-label={props.label} onClick={() => props.onClick()}>
+    <button class="btn ghost square" type="button" title={props.label} aria-label={props.label} disabled={props.disabled} onClick={() => props.onClick()}>
       <Icon name={props.icon} />
     </button>
   );
@@ -20,8 +20,9 @@ export function TitleBar() {
       <span class="app-name">rsModMaster</span>
       <span class="spacer" />
       <div class="titlebar-group" role="group" aria-label="Session">
-        <Action icon="file-plus" label="New Session" onClick={app.newSession} />
-        <Action icon="folder-open" label="Load Session" onClick={app.loadSession} />
+        {/* trocar a sessão no meio do scan deixaria a thread com a requisição antiga */}
+        <Action icon="file-plus" label="New Session" disabled={app.scanning()} onClick={app.newSession} />
+        <Action icon="folder-open" label="Load Session" disabled={app.scanning()} onClick={app.loadSession} />
         <Action icon="save" label="Save Session" onClick={app.saveSession} />
       </div>
       <div class="titlebar-group" role="group" aria-label="View">

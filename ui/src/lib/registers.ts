@@ -243,6 +243,10 @@ const unused = (address: number): Cell => ({
   tooltip: '',
 });
 
+/** A primeira célula é a 2ª metade de um float que começa antes do intervalo: escrever a partir
+ *  dela deslocaria todos os valores. */
+export const startsInsideFloat = (rows: Row[]) => rows.flatMap((r) => r.cells).find((c) => c.kind !== 'unused')?.kind === 'continuation';
+
 /** Algum registrador seria escrito como float (o Write Single Register não consegue). */
 export const hasFloat = (rows: Row[]) => rows.some((r) => r.cells.some((c) => c.kind === 'value' && c.base === 'float'));
 
@@ -290,4 +294,4 @@ export function validateFormat(address: number, base: Base, formats: Record<numb
 }
 
 /** Cabeçalho da linha / endereço, em decimal (2 dígitos no mínimo) ou hexadecimal. */
-export const formatAddress = (address: number, hex: boolean) => (hex ? address.toString(16) : String(address).padStart(2, '0'));
+export const formatAddress = (address: number, hex: boolean) => (hex ? address.toString(16).toUpperCase() : String(address).padStart(2, '0'));

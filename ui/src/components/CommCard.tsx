@@ -32,6 +32,7 @@ export function CommCard() {
           class="narrow"
           inputmode="numeric"
           value={app.form.slave}
+          error={app.errors().slave}
           disabled={locked()}
           onInput={(e) => app.setForm('slave', e.currentTarget.value)}
         />
@@ -40,16 +41,16 @@ export function CommCard() {
           class="narrow"
           inputmode="numeric"
           value={app.form.scanRate}
+          error={app.errors().scanRate}
           disabled={locked()}
           onInput={(e) => app.setForm('scanRate', e.currentTarget.value)}
         />
       </div>
-      <div class="row end">
+      <div class="row end nowrap">
         <button class="target" type="button" title="Edit connection settings" onClick={() => app.setDialog('settings')}>
           <Icon name={app.form.mode === 'TCP' ? 'globe' : 'cable'} />
           <span>{target()}</span>
         </button>
-        <span class="spacer" />
         <Show
           when={app.connected()}
           fallback={

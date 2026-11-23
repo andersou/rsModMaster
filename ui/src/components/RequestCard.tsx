@@ -26,7 +26,7 @@ export function RequestCard() {
         <SelectField label="Function Code" class="grow" value={app.form.fn} disabled={locked()} onChange={(e) => app.setFunction(Number(e.currentTarget.value))}>
           <For each={FUNCTIONS}>
             {(f) => (
-              <option value={f.code} selected={f.code === app.form.fn}>
+              <option value={f.code}>
                 {f.code.toString(16).padStart(2, '0').toUpperCase()} · {f.name}
               </option>
             )}
@@ -34,10 +34,11 @@ export function RequestCard() {
         </SelectField>
         <div class="field">
           <span class="label">Start Address</span>
-          <div class="addr">
-            <span class="input">
+          <div class="addr" title={app.errors().start}>
+            <span class="input" classList={{ invalid: Boolean(app.errors().start) }}>
               <input
                 aria-label="Start Address"
+                aria-invalid={Boolean(app.errors().start)}
                 spellcheck={false}
                 autocomplete="off"
                 value={app.form.start}
@@ -50,7 +51,7 @@ export function RequestCard() {
               options={ADDRESS_BASES}
               value={app.form.addrHex ? 'hex' : 'dec'}
               disabled={locked()}
-              onChange={(base) => app.setForm('addrHex', base === 'hex')}
+              onChange={(base) => app.setAddrHex(base === 'hex')}
             />
           </div>
         </div>
@@ -59,9 +60,9 @@ export function RequestCard() {
           class="narrow"
           inputmode="numeric"
           value={app.form.qty}
+          error={app.errors().qty}
           disabled={locked() || app.spec().max === 1}
           onInput={(e) => app.setForm('qty', e.currentTarget.value)}
-          onBlur={() => app.setForm('qty', String(app.quantity()))}
         />
         <SelectField
           label="Default Format"
@@ -72,7 +73,7 @@ export function RequestCard() {
         >
           <For each={FORMATS}>
             {(base) => (
-              <option value={base} selected={base === app.form.format} disabled={base === 'float' && app.singleRegisterWrite()}>
+              <option value={base} disabled={base === 'float' && app.singleRegisterWrite()}>
                 {BASE_LABELS[base]}
               </option>
             )}

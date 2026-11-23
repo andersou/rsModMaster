@@ -46,7 +46,7 @@ export function ToolsDialog() {
         <SelectField label="Command" class="grow" value={command()} onChange={(e) => setCommand(e.currentTarget.value as Command)}>
           <For each={COMMANDS}>
             {(c) => (
-              <option value={c} selected={c === command()} disabled={!available(c)}>
+              <option value={c} disabled={!available(c)}>
                 {c}
                 {tcpOnly(c) ? ' (TCP)' : ''}
               </option>

@@ -17,7 +17,9 @@ export function Dialog(props: {
   createEffect(() => {
     if (props.open && !dialog.open) {
       props.onOpen?.();
-      dialog.showModal();
+      // o que o onOpen mudou só chega ao DOM depois deste efeito; o foco inicial do showModal
+      // (autofocus) precisa já ver o conteúdo novo
+      queueMicrotask(() => props.open && !dialog.open && dialog.showModal());
     }
     else if (!props.open && dialog.open) dialog.close();
   });

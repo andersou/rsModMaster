@@ -43,6 +43,12 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
 - Bobinas e entradas discretas ignoram formato: são sempre 0/1.
 - O cabeçalho das linhas da tabela segue o Dec/Hex do endereço inicial, não o formato dos valores.
 - Erro repetido no scan vira um aviso só, até mudar.
+- Campos inválidos (escravo, endereço, quantidade, scan rate) ficam marcados e bloqueiam a leitura,
+  a escrita e o scan, em vez de serem ajustados em silêncio. O scan tem mínimo de 50 ms, e alternar
+  Dec/Hex converte o endereço digitado.
+- Uma escrita que começaria na 2ª metade de um float é recusada (o fModMaster deslocava os valores),
+  e o core recusa qualquer escrita sem exatamente um valor por item.
+- Uma escrita que falha mantém o que foi digitado; uma que dá certo confirma com um aviso.
 - Sem menu nativo: as ações de File, View e Help ficam na barra de título. Não há o "Modbus Manual"
   (o fModMaster só o abria se a documentação do qModMaster estivesse no checkout).
 

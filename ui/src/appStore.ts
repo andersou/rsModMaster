@@ -21,9 +21,11 @@ import {
   functionSpec,
   type Grid,
   hasFloat,
+  startsInsideFloat,
   toEndian,
   validateFormat,
 } from './lib/registers';
+import { convertAddress, type FormErrors, parseAddress, validateForm } from './lib/form';
 import type { CoreEvent, Outcome, Request, Settings } from './lib/types';
 import { toast } from './toasts';
 
@@ -88,12 +90,16 @@ const checkpoints = new Map<number, Checkpoint>();
 // ---- derivados ----
 
 const spec = createMemo(() => functionSpec(form.fn));
-const startAddress = createMemo(() => {
-  const n = parseInt(form.start || '0', form.addrHex ? 16 : 10);
-  return Number.isFinite(n) ? Math.min(Math.max(n, 0), 65535) : 0;
-});
+const startAddress = createMemo(() => Math.min(parseAddress(form.start, form.addrHex) ?? 0, 65535));
 const quantity = createMemo(() => clampQuantity(int(form.qty, spec().min), spec()));
 const singleRegisterWrite = createMemo(() => form.fn === 0x06);
+const errors = createMemo<FormErrors>(() => validateForm({ ...form, baseAddr: settings.baseAddr ?? '0', spec: spec() }));
+/** Primeiro campo inválido, avisado ao tentar ler, escrever ou escanear. */
+function blockedByForm() {
+  const first = Object.values(errors())[0];
+  if (first) toast(first, 'warning');
+  return Boolean(first);
+}
 const formats = createMemo(() => {
   const out: Record<number, Base> = {};
   for (const [addr, value] of Object.entries(settings.registerFormats ?? {})) {
@@ -187,7 +193,7 @@ function clearTable() {
 /** A requisição com o que está na tela; o Base Addr é descontado do endereço inicial. */
 function request(values?: number[]): Request {
   return {
-    slave: Math.min(Math.max(int(form.slave, 1), 0), 255),
+    slave: int(form.slave, 1),
     function: form.fn,
     start: Math.max(0, startAddress() - int(settings.baseAddr, 0)),
     count: quantity(),
@@ -198,6 +204,11 @@ function request(values?: number[]): Request {
 /** Valores a escrever, lidos da tabela; `undefined` numa leitura, `null` se algo não vale. */
 function writeValues(): number[] | undefined | null {
   if (!spec().write) return undefined;
+  if (startsInsideFloat(rows())) {
+    const start = startAddress();
+    toast(`Register ${start} is the second half of the float at ${start - 1}: start at ${start - 1} or reset its format.`, 'warning');
+    return null;
+  }
   if (singleRegisterWrite() && hasFloat(rows())) {
     toast(FLOAT_NEEDS_FC10, 'warning');
     return null;
@@ -215,7 +226,8 @@ function writeValues(): number[] | undefined | null {
 function apply(outcome: Outcome, fromScan = false) {
   setCounters({ packets: outcome.packets, errors: outcome.errors });
   setTable({ values: outcome.values, valid: outcome.error === null });
-  setEdits(reconcile({}));
+  // escrita que falhou: o que foi digitado fica para tentar de novo
+  if (outcome.error === null) setEdits(reconcile({}));
   // no scan, o mesmo erro a cada volta vira um aviso só
   if (outcome.error && (!fromScan || outcome.error !== lastScanError)) toast(outcome.error, 'danger');
   if (fromScan) lastScanError = outcome.error;
@@ -258,6 +270,12 @@ export const app = {
   grid,
   spec,
   quantity,
+  errors,
+  /** Dec/Hex do endereço inicial: converte o texto, o endereço continua o mesmo. */
+  setAddrHex(hex: boolean) {
+    if (hex === form.addrHex) return;
+    setForm({ start: convertAddress(form.start, form.addrHex), addrHex: hex });
+  },
   singleRegisterWrite,
   cellText,
   invalidCell,
@@ -305,10 +323,14 @@ export const app = {
 
   readWrite: () =>
     guarded(async () => {
-      if (!connected() || scanning()) return;
+      if (!connected() || scanning() || blockedByForm()) return;
       const values = writeValues();
       if (values === null) return;
-      apply(await api.transaction(request(values)));
+      const outcome = await api.transaction(request(values));
+      apply(outcome);
+      if (values && outcome.error === null) {
+        toast(`Wrote ${values.length} ${spec().bits ? 'coil' : 'register'}${values.length > 1 ? 's' : ''} at ${startAddress()}`);
+      }
       await persist();
     }),
 
@@ -319,11 +341,11 @@ export const app = {
         setScanning(false);
         return;
       }
-      if (!connected()) return;
+      if (!connected() || blockedByForm()) return;
       const values = writeValues();
       if (values === null) return;
       lastScanError = null;
-      await api.startScan(request(values), Math.max(int(form.scanRate, 1000), 1));
+      await api.startScan(request(values), int(form.scanRate, 1000));
       setScanning(true);
     }),
 

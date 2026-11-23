@@ -379,6 +379,9 @@ main {
   overflow-wrap: anywhere;
 }
 .toast .icon { margin-top: 2px; }
+.toast-close { flex: none; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--muted); cursor: pointer; }
+.toast-close:hover { background: var(--secondary-hover); color: var(--fg); }
+.toast-close .icon { width: 14px; height: 14px; margin: 0; }
 .toast.success .icon { color: var(--success); }
 .toast.warning .icon { color: var(--warning); }
 .toast.danger .icon { color: var(--danger); }
@@ -412,6 +415,8 @@ a:hover { color: var(--link-hover); }
 .request { flex: 1; min-width: 0; }
 .row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .row.end { align-items: center; }
+.row.nowrap { flex-wrap: nowrap; }
+.row.nowrap .target { flex: 1; }
 .field.narrow { width: 120px; }
 .field.grow { flex: 1; min-width: 200px; }
 .field.wide { grid-column: 1 / -1; }
@@ -440,7 +445,19 @@ a:hover { color: var(--link-hover); }
 .registers { flex: 1; min-height: 220px; }
 .registers .card-head .btn { flex: none; }
 .grid-scroll { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
-.grid { border-collapse: separate; border-spacing: 0; font: 13px/1 var(--mono); user-select: text; -webkit-user-select: text; }
+.grid {
+  width: 100%;
+  min-width: calc(64px + 10 * var(--col));
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font: 13px/1 var(--mono);
+  user-select: text;
+  -webkit-user-select: text;
+}
+.grid.single { width: auto; min-width: 0; }
+.grid.single col:not(.head-col) { width: var(--col); }
+.grid .head-col { width: 64px; }
 .grid th {
   position: sticky;
   top: 0;
@@ -455,15 +472,16 @@ a:hover { color: var(--link-hover); }
 }
 .grid tbody th { left: 0; top: auto; z-index: 0; border-bottom: 0; border-right: 1px solid var(--border); text-align: right; }
 .grid th.corner { left: 0; z-index: 2; }
-.cell { min-width: 92px; height: 36px; padding: 0 12px; border-bottom: 1px solid var(--muted-bg); white-space: nowrap; }
+.cell { height: 36px; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--muted-bg); white-space: nowrap; }
 .grid.write .cell { padding: 2px 4px; }
 .cell.unused { color: var(--border); background: repeating-linear-gradient(135deg, transparent 0 6px, #ffffff05 6px 12px); }
 .cell.continuation { color: var(--muted); }
 .cell.bad { color: var(--danger); }
+.cell.bin { white-space: normal; line-height: 1.2; font-size: 12px; }
+.grid.write .cell.bin input { font-size: 11px; padding: 0 4px; }
 .cell.overridden { box-shadow: inset 0 0 0 1px var(--primary); }
 .cell input {
   width: 100%;
-  min-width: 84px;
   height: 30px;
   padding: 0 8px;
   border: 1px solid var(--input-border);
@@ -514,6 +532,9 @@ a:hover { color: var(--link-hover); }
 .dialog-form { display: flex; flex-direction: column; gap: 16px; }
 .settings-dialog { width: min(560px, calc(100vw - 48px)); }
 .settings-dialog .segmented { margin-left: 0; }
+.settings-dialog .dialog-form { min-height: 400px; }
+.settings-dialog .dialog-actions { margin-top: auto; }
+.port-row { display: flex; align-items: flex-end; gap: 8px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .hint-text { font-size: 12px; }
 .bus-dialog { width: min(980px, calc(100vw - 48px)); height: min(640px, calc(100vh - 96px)); }
@@ -533,6 +554,7 @@ a:hover { color: var(--link-hover); }
   background: var(--bg);
   font: 12px/18px var(--mono);
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
 }

@@ -18,3 +18,7 @@ export function toast(text: string, tone: Tone = 'success') {
   setToasts((list) => [...list, { id, text, tone }]);
   setTimeout(() => setToasts((list) => list.filter((t) => t.id !== id)), tone === 'danger' ? 8000 : 4000);
 }
+
+export function dismiss(id: number) {
+  setToasts((list) => list.filter((t) => t.id !== id));
+}

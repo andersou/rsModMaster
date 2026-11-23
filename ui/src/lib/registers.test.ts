@@ -16,6 +16,7 @@ import {
   inputValid,
   parseFloat32,
   parseValue,
+  startsInsideFloat,
   validateFormat,
 } from './registers';
 
@@ -144,6 +145,14 @@ describe('escrita', () => {
     expect(hasFloat(rows)).toBe(true);
     const typed: Record<number, string> = { 0: '7', 1: '-12.5' };
     expect(collectWrite(rows, (c) => typed[c.address] ?? editText(c), false, false)).toEqual({ values: [7, 0xc148, 0] });
+  });
+
+  it('escrita que começa na 2ª metade de um float é reconhecida (não pode deslocar os valores)', () => {
+    const rows = buildRows(grid({ start: 10, count: 2, write: true, formats: { 9: 'float' }, values: [1, 2] }));
+    expect(startsInsideFloat(rows)).toBe(true);
+    // sem o bloqueio, sairia um valor a menos do que a quantidade pedida
+    expect(collectWrite(rows, editText, false, false)).toEqual({ values: [2] });
+    expect(startsInsideFloat(buildRows(grid({ start: 9, count: 2, write: true, formats: { 9: 'float' } })))).toBe(false);
   });
 
   it('o primeiro campo inválido é apontado', () => {
