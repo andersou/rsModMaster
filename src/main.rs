@@ -7,12 +7,16 @@
 use std::{
     fs,
     path::{Path, PathBuf},
-    sync::{Arc, mpsc::Receiver},
+    sync::{Arc, Mutex, mpsc::Receiver},
     thread,
     time::Duration,
 };
 
-use modmaster_core::{Event, Master, Outcome, Request, Rtu, Settings, Tcp};
+use modmaster_core::{
+    Event, Master, Outcome, Request, Rtu, Settings, Tcp,
+    convert::{self, Converters, Info, LoadError},
+};
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, async_runtime::spawn_blocking};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
@@ -21,6 +25,8 @@ const INI: &str = "fModMaster.ini";
 const LOG: &str = "rsModMaster";
 
 type Shared = Arc<Master>;
+/// Converters carregados; recriados a cada recarga (uma VM Lua por conjunto).
+type SharedConverters = Arc<Mutex<Converters>>;
 
 /// Roda o que bloqueia (E/S serial e TCP, até o timeout) fora da thread da janela.
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
@@ -217,6 +223,178 @@ fn open_log(app: AppHandle) -> Result<(), String> {
         .map_err(|err| format!("Could not open log file {}: {err}", path.display()))
 }
 
+/// Pasta dos converters do usuário, ao lado do INI (gravável em todos os sistemas).
+fn converters_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_config_dir()
+        .map_err(|err| err.to_string())?
+        .join("converters"))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct Catalog {
+    dir: String,
+    converters: Vec<Info>,
+    errors: Vec<LoadError>,
+    /// modelo do botão New do editor
+    template: &'static str,
+}
+
+fn catalog(dir: &Path, converters: &Converters) -> Catalog {
+    Catalog {
+        dir: dir.display().to_string(),
+        converters: converters.list(),
+        errors: converters.errors().to_vec(),
+        template: convert::TEMPLATE,
+    }
+}
+
+/// Lista os converters; com `reload`, relê a pasta antes (botão Reload e depois de salvar).
+#[tauri::command]
+async fn converters(
+    app: AppHandle,
+    state: State<'_, SharedConverters>,
+    reload: bool,
+) -> Result<Catalog, String> {
+    let dir = converters_dir(&app)?;
+    let state = state.inner().clone();
+    blocking(move || {
+        let mut converters = state.lock().unwrap();
+        if reload {
+            *converters = Converters::load(&dir);
+        }
+        catalog(&dir, &converters)
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct DecodeItem {
+    id: String,
+    regs: Vec<u16>,
+}
+
+#[derive(Deserialize)]
+struct EncodeItem {
+    id: String,
+    text: String,
+}
+
+/// Resultado de cada item, na ordem pedida: o valor ou a mensagem de erro do script.
+#[derive(Serialize)]
+struct Converted<T> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    value: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn converted<T>(result: Result<T, String>) -> Converted<T> {
+    match result {
+        Ok(value) => Converted {
+            value: Some(value),
+            error: None,
+        },
+        Err(error) => Converted {
+            value: None,
+            error: Some(error),
+        },
+    }
+}
+
+const MAX_ITEMS: usize = 125;
+
+#[tauri::command]
+async fn convert_decode(
+    state: State<'_, SharedConverters>,
+    items: Vec<DecodeItem>,
+) -> Result<Vec<Converted<String>>, String> {
+    if items.len() > MAX_ITEMS {
+        return Err(format!("at most {MAX_ITEMS} converters per call"));
+    }
+    let state = state.inner().clone();
+    blocking(move || {
+        let converters = state.lock().unwrap();
+        items
+            .iter()
+            .map(|item| converted(converters.decode(&item.id, &item.regs)))
+            .collect()
+    })
+    .await
+}
+
+#[tauri::command]
+async fn convert_encode(
+    state: State<'_, SharedConverters>,
+    items: Vec<EncodeItem>,
+) -> Result<Vec<Converted<Vec<u16>>>, String> {
+    if items.len() > MAX_ITEMS {
+        return Err(format!("at most {MAX_ITEMS} converters per call"));
+    }
+    let state = state.inner().clone();
+    blocking(move || {
+        let converters = state.lock().unwrap();
+        items
+            .iter()
+            .map(|item| converted(converters.encode(&item.id, &item.text)))
+            .collect()
+    })
+    .await
+}
+
+/// Código de um converter, para o editor embutido (só ids válidos: nunca um caminho da webview).
+#[tauri::command]
+fn converter_source(app: AppHandle, id: String) -> Result<String, String> {
+    convert::source(&converters_dir(&app)?, &id)
+}
+
+/// Grava o converter e recarrega todos: o catálogo devolvido traz o erro de carga, se houver.
+#[tauri::command]
+async fn save_converter(
+    app: AppHandle,
+    state: State<'_, SharedConverters>,
+    id: String,
+    source: String,
+) -> Result<Catalog, String> {
+    let dir = converters_dir(&app)?;
+    let state = state.inner().clone();
+    blocking(move || {
+        convert::save(&dir, &id, &source)?;
+        let mut converters = state.lock().unwrap();
+        *converters = Converters::load(&dir);
+        Ok(catalog(&dir, &converters))
+    })
+    .await?
+}
+
+#[tauri::command]
+async fn delete_converter(
+    app: AppHandle,
+    state: State<'_, SharedConverters>,
+    id: String,
+) -> Result<Catalog, String> {
+    let dir = converters_dir(&app)?;
+    let state = state.inner().clone();
+    blocking(move || {
+        convert::delete(&dir, &id)?;
+        let mut converters = state.lock().unwrap();
+        *converters = Converters::load(&dir);
+        Ok(catalog(&dir, &converters))
+    })
+    .await?
+}
+
+#[tauri::command]
+fn open_converters_dir(app: AppHandle) -> Result<(), String> {
+    let dir = converters_dir(&app)?;
+    fs::create_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+    app.opener()
+        .open_path(dir.display().to_string(), None::<&str>)
+        .map_err(|err| format!("Could not open {}: {err}", dir.display()))
+}
+
 /// Leva os eventos do core à webview. O que já estiver na fila vai num único `emit`: no scan, os
 /// quadros e o resultado de uma volta chegam juntos.
 fn forward(app: AppHandle, rx: Receiver<Event>) {
@@ -249,8 +427,17 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .manage::<Shared>(Arc::new(master))
         .setup(move |app| {
-            let app = app.handle().clone();
-            thread::spawn(move || forward(app, rx));
+            let handle = app.handle().clone();
+            // exemplos só na primeira vez; depois a pasta é do usuário
+            let dir = converters_dir(&handle)?;
+            if let Err(err) = convert::install_examples(&dir) {
+                log::warn!(
+                    "Could not install example converters in {}: {err}",
+                    dir.display()
+                );
+            }
+            app.manage::<SharedConverters>(Arc::new(Mutex::new(Converters::load(&dir))));
+            thread::spawn(move || forward(handle, rx));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -270,7 +457,14 @@ fn main() {
             report_slave_id,
             ping,
             port_status,
-            open_log
+            open_log,
+            converters,
+            convert_decode,
+            convert_encode,
+            converter_source,
+            save_converter,
+            delete_converter,
+            open_converters_dir
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");

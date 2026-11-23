@@ -3,7 +3,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import type { CoreEvent, Outcome, Request, Settings } from './lib/types';
+import type { Catalog, ConvertResult, CoreEvent, Outcome, Request, Settings } from './lib/types';
 
 export interface RtuConfig {
   port: string;
@@ -40,6 +40,14 @@ export const api = {
   ping: (ip: string) => invoke<string>('ping', { ip }),
   portStatus: (ip: string, port: string) => invoke<string>('port_status', { ip, port }),
   openLog: () => invoke<void>('open_log'),
+  /** com `reload`, relê a pasta de converters antes */
+  converters: (reload = false) => invoke<Catalog>('converters', { reload }),
+  convertDecode: (items: { id: string; regs: number[] }[]) => invoke<ConvertResult<string>[]>('convert_decode', { items }),
+  convertEncode: (items: { id: string; text: string }[]) => invoke<ConvertResult<number[]>[]>('convert_encode', { items }),
+  converterSource: (id: string) => invoke<string>('converter_source', { id }),
+  saveConverter: (id: string, source: string) => invoke<Catalog>('save_converter', { id, source }),
+  deleteConverter: (id: string) => invoke<Catalog>('delete_converter', { id }),
+  openConvertersDir: () => invoke<void>('open_converters_dir'),
   openUrl,
   onCoreEvents: (handler: (events: CoreEvent[]) => void) => listen<CoreEvent[]>('core', (e) => handler(e.payload)),
 };

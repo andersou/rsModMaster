@@ -30,6 +30,29 @@ export interface Settings {
   /** endereço -> base (2, 10, 16 ou 3 = float) */
   registerFormats: Record<string, number>;
   registerFloatEndians: Record<string, number>;
+  /** endereço inicial -> id do custom converter (arquivo .lua) */
+  registerConverters: Record<string, string>;
+}
+
+export interface ConverterInfo {
+  id: string;
+  name: string;
+  registers: number;
+  writable: boolean;
+}
+
+/** Converters carregados da pasta, com os arquivos que não carregaram. */
+export interface Catalog {
+  dir: string;
+  converters: ConverterInfo[];
+  errors: { file: string; message: string }[];
+  template: string;
+}
+
+/** Resultado de um item de decode/encode: o valor ou o erro do script. */
+export interface ConvertResult<T> {
+  value?: T;
+  error?: string;
 }
 
 export interface Request {

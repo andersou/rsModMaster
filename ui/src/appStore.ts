@@ -1,7 +1,7 @@
 // Estado da tela em sinais e stores, e as ações que chamam o core. Porte do MainViewController do
 // fModMaster: os mesmos estados (desconectado, conectado, em scan) e as mesmas regras.
 
-import { createMemo, createSignal } from 'solid-js';
+import { createEffect, createMemo, createSignal, on } from 'solid-js';
 import { createStore, reconcile, unwrap } from 'solid-js/store';
 import { api } from './api';
 import {
@@ -14,6 +14,7 @@ import {
   type Cell,
   clampQuantity,
   collectWrite,
+  type Converted,
   type Endian,
   editText,
   functionFromSetting,
@@ -23,14 +24,15 @@ import {
   hasFloat,
   startsInsideFloat,
   toEndian,
+  validateConverter,
   validateFormat,
 } from './lib/registers';
 import { convertAddress, type FormErrors, parseAddress, validateForm } from './lib/form';
-import type { CoreEvent, Outcome, Request, Settings } from './lib/types';
+import type { Catalog, CoreEvent, Outcome, Request, Settings } from './lib/types';
 import { toast } from './toasts';
 
 export type Mode = 'RTU' | 'TCP';
-export type DialogName = 'settings' | 'bus' | 'tools' | 'about';
+export type DialogName = 'settings' | 'bus' | 'tools' | 'about' | 'converters';
 
 export interface RawLine {
   type: 'Tx' | 'Rx';
@@ -75,6 +77,9 @@ const [edits, setEdits] = createStore<Record<number, string>>({});
 const [invalidCell, setInvalidCell] = createSignal<number | null>(null);
 const [raw, setRaw] = createSignal<RawLine[]>([]);
 const [dialog, setDialog] = createSignal<DialogName | null>(null);
+const [catalog, setCatalog] = createSignal<Catalog>({ dir: '', converters: [], errors: [], template: '' });
+/** decode de cada converter do intervalo, por endereço inicial */
+const [converted, setConverted] = createSignal<Record<number, Converted>>({});
 let lastScanError: string | null = null;
 
 /** Escolhas de cada função, guardadas ao trocar (quantidade, endereço, formatos), como o fModMaster. */
@@ -84,6 +89,7 @@ interface Checkpoint {
   format: Base;
   formats: Record<string, number>;
   endians: Record<string, number>;
+  converters: Record<string, string>;
 }
 const checkpoints = new Map<number, Checkpoint>();
 
@@ -113,6 +119,12 @@ const endians = createMemo(() => {
   for (const [addr, value] of Object.entries(settings.registerFloatEndians ?? {})) out[Number(addr)] = toEndian(value);
   return out;
 });
+const assigned = createMemo(() => {
+  const out: Record<number, string> = {};
+  for (const [addr, id] of Object.entries(settings.registerConverters ?? {})) out[Number(addr)] = id;
+  return out;
+});
+const sizes = createMemo(() => Object.fromEntries(catalog().converters.map((c) => [c.id, c.registers])) as Record<string, number>);
 const grid = createMemo<Grid>(() => ({
   start: startAddress(),
   count: quantity(),
@@ -125,7 +137,42 @@ const grid = createMemo<Grid>(() => ({
   endians: endians(),
   values: table().values,
   valid: table().valid,
+  converters: assigned(),
+  sizes: sizes(),
+  converted: converted(),
 }));
+
+// Decode dos converters sempre que chegam valores ou muda a atribuição/o catálogo. O Lua roda no
+// core; uma resposta atrasada (scan rápido) é descartada pela sequência.
+let decodeSeq = 0;
+let lastConverterError: string | undefined;
+createEffect(
+  on([() => table(), assigned, sizes, startAddress, quantity, () => spec().bits], async () => {
+    const seq = ++decodeSeq;
+    const { values, valid } = table();
+    const start = startAddress();
+    const items: { address: number; id: string; regs: number[] }[] = [];
+    if (valid && !spec().bits) {
+      for (const [addr, id] of Object.entries(assigned())) {
+        const address = Number(addr);
+        const size = sizes()[id];
+        const offset = address - start;
+        if (size === undefined || offset < 0 || offset + size > values.length) continue;
+        items.push({ address, id, regs: values.slice(offset, offset + size) });
+      }
+    }
+    if (!items.length) return setConverted({});
+    try {
+      const results = await api.convertDecode(items.map(({ id, regs }) => ({ id, regs })));
+      if (seq !== decodeSeq) return;
+      setConverted(Object.fromEntries(items.map((item, i) => [item.address, results[i]])));
+      // como no scan: a mesma mensagem de script uma vez só
+      for (const r of results) if (r.error && r.error !== lastConverterError) toast((lastConverterError = r.error), 'danger');
+    } catch (err) {
+      if (seq === decodeSeq) toast(String(err), 'danger');
+    }
+  }),
+);
 const rows = createMemo(() => buildRows(grid()));
 const cellText = (cell: Cell) => edits[cell.address] ?? editText(cell);
 const maxLines = () => {
@@ -201,19 +248,40 @@ function request(values?: number[]): Request {
   };
 }
 
-/** Valores a escrever, lidos da tabela; `undefined` numa leitura, `null` se algo não vale. */
-function writeValues(): number[] | undefined | null {
+/** Valores a escrever, lidos da tabela (os converters passam pelo `encode` no core); `undefined`
+ *  numa leitura, `null` se algo não vale. */
+async function writeValues(): Promise<number[] | undefined | null> {
   if (!spec().write) return undefined;
   if (startsInsideFloat(rows())) {
     const start = startAddress();
-    toast(`Register ${start} is the second half of the float at ${start - 1}: start at ${start - 1} or reset its format.`, 'warning');
+    toast(`Register ${start} is the middle of a float or converter that starts before it: start there or reset its format.`, 'warning');
     return null;
+  }
+  const convCells = rows()
+    .flatMap((r) => r.cells)
+    .filter((c) => c.kind === 'value' && c.converter !== undefined);
+  if (singleRegisterWrite() && convCells.some((c) => (sizes()[c.converter!] ?? 1) > 1)) {
+    toast('A converter over several registers requires Write Multiple Registers (FC 10).', 'warning');
+    return null;
+  }
+  const encoded: Record<number, number[]> = {};
+  if (convCells.length) {
+    const results = await api.convertEncode(convCells.map((c) => ({ id: c.converter!, text: cellText(c) })));
+    for (const [i, cell] of convCells.entries()) {
+      const r = results[i];
+      if (r.error !== undefined || !r.value) {
+        setInvalidCell(cell.address);
+        toast(`Register ${cell.address}: ${r.error ?? 'no value'}`, 'danger');
+        return null;
+      }
+      encoded[cell.address] = r.value;
+    }
   }
   if (singleRegisterWrite() && hasFloat(rows())) {
     toast(FLOAT_NEEDS_FC10, 'warning');
     return null;
   }
-  const result = collectWrite(rows(), cellText, spec().bits, grid().signed);
+  const result = collectWrite(rows(), cellText, spec().bits, grid().signed, encoded);
   if ('invalid' in result) {
     setInvalidCell(result.invalid);
     toast('Invalid write value in table.', 'danger');
@@ -280,7 +348,27 @@ export const app = {
       endian: endians()[address] ?? toEndian(settings.floatEndian),
       custom: own !== undefined,
       floatOwner: formats()[address - 1] === 'float' ? address - 1 : null,
+      converter: assigned()[address] ?? null,
     };
+  },
+  catalog,
+  async reloadConverters() {
+    try {
+      setCatalog(await api.converters(true));
+    } catch (err) {
+      toast(String(err), 'danger');
+    }
+  },
+  setCatalog,
+  /** Atribui o converter a partir de `address`; o formato próprio do endereço sai. */
+  setConverter(address: number, id: string) {
+    const size = sizes()[id] ?? 1;
+    const message = validateConverter(address, size, formats(), assigned(), sizes());
+    if (message) return toast(message, 'warning');
+    setSettings('registerConverters', String(address), id);
+    setSettings('registerFormats', String(address), undefined!);
+    setSettings('registerFloatEndians', String(address), undefined!);
+    void persist(); // escolha de formato não se perde ao fechar sem ler
   },
   /** Dec/Hex do endereço inicial: converte o texto, o endereço continua o mesmo. */
   setAddrHex(hex: boolean) {
@@ -300,6 +388,7 @@ export const app = {
 
   async init() {
     setSettings(reconcile(await api.loadSettings()));
+    setCatalog(await api.converters());
     loadForm();
     setLoaded(true);
   },
@@ -335,7 +424,7 @@ export const app = {
   readWrite: () =>
     guarded(async () => {
       if (!connected() || scanning() || blockedByForm()) return;
-      const values = writeValues();
+      const values = await writeValues();
       if (values === null) return;
       const outcome = await api.transaction(request(values));
       apply(outcome);
@@ -353,7 +442,7 @@ export const app = {
         return;
       }
       if (!connected() || blockedByForm()) return;
-      const values = writeValues();
+      const values = await writeValues();
       if (values === null) return;
       lastScanError = null;
       await api.startScan(request(values), int(form.scanRate, 1000));
@@ -376,6 +465,7 @@ export const app = {
       format: form.format,
       formats: { ...settings.registerFormats },
       endians: { ...settings.registerFloatEndians },
+      converters: { ...settings.registerConverters },
     });
     const next = functionSpec(code);
     const saved = checkpoints.get(code);
@@ -383,6 +473,7 @@ export const app = {
       setForm({ fn: code, qty: saved.qty, start: saved.start, format: saved.format });
       setSettings('registerFormats', reconcile(saved.formats));
       setSettings('registerFloatEndians', reconcile(saved.endians));
+      setSettings('registerConverters', reconcile(saved.converters));
     } else {
       setForm({ fn: code, qty: String(clampQuantity(int(form.qty, next.min), next)) });
     }
@@ -393,16 +484,20 @@ export const app = {
 
   setFormat(address: number, base: Base, endian?: Endian) {
     if (base === 'float' && singleRegisterWrite()) return toast(FLOAT_NEEDS_FC10, 'warning');
-    const message = validateFormat(address, base, formats());
+    const message = validateFormat(address, base, formats(), assigned(), sizes());
     if (message) return toast(message, 'warning');
+    setSettings('registerConverters', String(address), undefined!);
     setSettings('registerFormats', String(address), baseToFormat(base));
     if (base === 'float') setSettings('registerFloatEndians', String(address), endian ?? toEndian(settings.floatEndian));
     else setSettings('registerFloatEndians', String(address), undefined!);
+    void persist();
   },
 
   resetFormat(address: number) {
+    setSettings('registerConverters', String(address), undefined!);
     setSettings('registerFormats', String(address), undefined!);
     setSettings('registerFloatEndians', String(address), undefined!);
+    void persist();
   },
 
   async saveSettings(changes: Partial<Settings>) {
@@ -414,6 +509,7 @@ export const app = {
     setSettings(sessionDefaults);
     setSettings('registerFormats', reconcile({}));
     setSettings('registerFloatEndians', reconcile({}));
+    setSettings('registerConverters', reconcile({}));
     checkpoints.clear();
     loadForm();
     clearTable();

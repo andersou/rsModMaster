@@ -25,7 +25,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
   let ref!: HTMLDivElement;
   const current = () => app.formatAt(props.menu.address);
   const checked = (item: (typeof MENU_ITEMS)[number]) =>
-    current().floatOwner === null && item.base === current().base && (item.base !== 'float' || item.endian === current().endian);
+    current().floatOwner === null && current().converter === null && item.base === current().base && (item.base !== 'float' || item.endian === current().endian);
   const pick = (base: Base, endian?: Endian) => {
     app.setFormat(props.menu.address, base, endian);
     props.onClose();
@@ -46,6 +46,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
   const state = () => {
     const c = current();
     if (c.floatOwner !== null) return `Second half of the float at ${c.floatOwner}`;
+    if (c.converter !== null) return `${app.catalog().converters.find((x) => x.id === c.converter)?.name ?? c.converter} · converter`;
     const name = MENU_ITEMS.find(checked)?.label ?? BASE_LABELS[c.base];
     return `${name} · ${c.custom ? 'custom' : 'table default'}`;
   };
@@ -55,7 +56,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
       class="menu"
       role="menu"
       aria-label={`Format of register ${props.menu.address}: ${state()}`}
-      style={{ left: `${Math.min(props.menu.x, innerWidth - 220)}px`, top: `${Math.min(props.menu.y, innerHeight - 340)}px` }}
+      style={{ left: `${Math.min(props.menu.x, innerWidth - 240)}px`, top: `${Math.max(8, Math.min(props.menu.y, innerHeight - 440))}px` }}
     >
       <div class="menu-title">
         <span>Register {props.menu.address}</span>
@@ -77,10 +78,45 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
         )}
       </For>
       <div class="hairline" />
+      <div class="menu-section">Converters</div>
+      <For each={app.catalog().converters} fallback={<div class="menu-empty">No converters loaded</div>}>
+        {(c) => (
+          <button
+            role="menuitemradio"
+            aria-checked={current().converter === c.id}
+            type="button"
+            disabled={current().floatOwner !== null || (c.registers > 1 && floatBlocked())}
+            title={`${c.id}.lua · ${c.registers} register${c.registers > 1 ? 's' : ''}${c.writable ? '' : ' · read-only'}`}
+            onClick={() => {
+              app.setConverter(props.menu.address, c.id);
+              props.onClose();
+            }}
+          >
+            <Icon name="check" class="menu-check" />
+            <span class="spacer">{c.name}</span>
+            <span class="menu-hint">
+              {c.registers > 1 ? `×${c.registers}` : ''}
+              {c.writable ? '' : ' RO'}
+            </span>
+          </button>
+        )}
+      </For>
       <button
         role="menuitem"
         type="button"
-        disabled={!current().custom}
+        onClick={() => {
+          app.setDialog('converters');
+          props.onClose();
+        }}
+      >
+        <Icon name="braces" class="menu-check visible" />
+        Manage converters…
+      </button>
+      <div class="hairline" />
+      <button
+        role="menuitem"
+        type="button"
+        disabled={!current().custom && current().converter === null}
         onClick={() => {
           app.resetFormat(props.menu.address);
           props.onClose();
@@ -104,7 +140,7 @@ function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) =
       class={`cell ${props.cell.kind}`}
       classList={{
         overridden: props.cell.overridden,
-        bad: !app.grid().valid && props.cell.kind !== 'unused',
+        bad: (!app.grid().valid && props.cell.kind !== 'unused') || Boolean(props.cell.error),
         bin: binary(),
       }}
       title={props.cell.tooltip || undefined}
@@ -116,7 +152,7 @@ function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) =
           classList={{ invalid: invalid() }}
           spellcheck={false}
           autocomplete="off"
-          maxLength={maxLength(props.cell.base, bits(), signed())}
+          maxLength={props.cell.converter ? 64 : maxLength(props.cell.base, bits(), signed())}
           value={text()}
           disabled={app.scanning()}
           onInput={(e) => app.setEdit(props.cell.address, e.currentTarget.value)}

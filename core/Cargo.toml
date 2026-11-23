@@ -9,5 +9,7 @@ license.workspace = true
 [dependencies]
 # sem libudev: o CI e o Linux do usuário não precisam do pacote de desenvolvimento
 serialport = { version = "4", default-features = false }
+# Lua 5.4 dos custom converters, o mesmo motor do garten-updater; `send` deixa a VM atrás de um Mutex
+mlua = { version = "0.12", features = ["lua54", "vendored", "send"] }
 serde.workspace = true
 log.workspace = true

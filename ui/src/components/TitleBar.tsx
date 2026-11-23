@@ -28,6 +28,7 @@ export function TitleBar() {
       <div class="titlebar-group" role="group" aria-label="View">
         <Action icon="activity" label="Bus Monitor" onClick={() => app.setDialog('bus')} />
         <Action icon="wrench" label="Tools" onClick={() => app.setDialog('tools')} />
+        <Action icon="braces" label="Converters" onClick={() => app.setDialog('converters')} />
         <Action icon="file-text" label="Log File" onClick={openLog} />
         <Action icon="settings-2" label="Settings" onClick={() => app.setDialog('settings')} />
         <Action icon="info" label="About" onClick={() => app.setDialog('about')} />

@@ -145,6 +145,29 @@ export interface Grid {
   values: readonly number[];
   /** `false` depois de um erro: as células mostram "-/-" */
   valid: boolean;
+  /** custom converter por endereço inicial (id do arquivo .lua) */
+  converters?: Record<number, string>;
+  /** registradores de cada converter carregado; id ausente = arquivo não encontrado */
+  sizes?: Record<string, number>;
+  /** resultado do decode por endereço inicial, vindo do core */
+  converted?: Record<number, Converted>;
+}
+
+export interface Converted {
+  value?: string;
+  error?: string;
+}
+
+/** Maior converter possível (o máximo do FC 03). */
+export const MAX_CONVERTER = 125;
+
+/** Endereço inicial do converter que cobre `address` (o próprio, se começar nele), ou `null`. */
+export function converterOwner(address: number, converters: Record<number, string>, sizes: Record<string, number>): number | null {
+  for (let k = 0; k < MAX_CONVERTER; k++) {
+    const id = converters[address - k];
+    if (id !== undefined) return (sizes[id] ?? 1) > k ? address - k : null;
+  }
+  return null;
 }
 
 export interface Cell {
@@ -160,6 +183,10 @@ export interface Cell {
   /** formato próprio, diferente do padrão (borda na tela) */
   overridden: boolean;
   tooltip: string;
+  /** id do custom converter que mostra este valor (só na célula inicial) */
+  converter?: string;
+  /** erro do script (a célula mostra ERR) */
+  error?: string;
 }
 
 export interface Row {
@@ -170,6 +197,11 @@ export interface Row {
 /** Os 2 registradores de um float: o primeiro mostra o valor, o segundo vira "—". */
 export function buildRows(grid: Grid): Row[] {
   const { start, count, formats } = grid;
+  const converters = grid.bits ? {} : (grid.converters ?? {});
+  const sizes = grid.sizes ?? {};
+  // intervalo que começa no meio de um converter: as células dele viram continuação
+  const owner = converterOwner(start, converters, sizes);
+  const insideUntil = owner !== null && owner < start ? owner + (sizes[converters[owner]] ?? 1) - 1 : -1;
   const formatAt = (a: number): Base => (grid.bits ? 'dec' : (formats[a] ?? grid.defaultBase));
   const endianAt = (a: number) => grid.endians[a] ?? grid.defaultEndian;
   const used = new Map<number, Cell>();
@@ -178,6 +210,44 @@ export function buildRows(grid: Grid): Row[] {
     const value = grid.values[i];
     const base = formatAt(address);
     const tooltip = `Address : ${address}`;
+    if (address <= insideUntil) {
+      used.set(address, { ...continuation(address, 'dec', 0, tooltip, value !== undefined), overridden: true });
+      continue;
+    }
+    const id = converters[address];
+    const size = id === undefined ? 0 : (sizes[id] ?? 1);
+    // converter que cabe no intervalo; cortado no fim, as células voltam ao formato padrão
+    if (id !== undefined && i + size <= count) {
+      const missing = grid.values.length < i + size;
+      const result = grid.converted?.[address];
+      let text = '-';
+      let error: string | undefined;
+      if (!grid.valid) text = '-/-';
+      else if (sizes[id] === undefined) error = `converter '${id}' not found`;
+      else if (missing) text = '-';
+      else if (result?.error !== undefined) error = result.error;
+      else if (result?.value !== undefined) text = result.value;
+      const range = size > 1 ? `${tooltip} → ${address + size - 1}` : tooltip;
+      used.set(address, {
+        address,
+        kind: 'value',
+        text: error && grid.valid ? 'ERR' : text,
+        base: 'dec',
+        endian: 0,
+        editable: grid.write,
+        hasValue: grid.valid && !missing && result?.value !== undefined,
+        overridden: true,
+        tooltip: `${range} · ${id}${error ? `\n${error}` : ''}`,
+        converter: id,
+        error: grid.valid ? error : undefined,
+      });
+      for (let k = 1; k < size; k++) {
+        const cell = continuation(address + k, 'dec', 0, `Address : ${address + k}`, grid.values[i + k] !== undefined);
+        used.set(address + k, { ...cell, overridden: true });
+      }
+      i += size - 1;
+      continue;
+    }
     // continuação de um float que começa antes do intervalo lido
     if (i === 0 && !grid.bits && formats[address - 1] === 'float') {
       used.set(address, continuation(address, base, endianAt(address), tooltip, value !== undefined));
@@ -259,10 +329,18 @@ export function collectWrite(
   text: (cell: Cell) => string,
   bits: boolean,
   signed: boolean,
+  /** registradores já codificados pelo `encode` de cada converter, por endereço inicial */
+  encoded: Record<number, number[]> = {},
 ): { values: number[] } | { invalid: number } {
   const values: number[] = [];
   for (const cell of rows.flatMap((r) => r.cells)) {
     if (cell.kind !== 'value') continue;
+    if (cell.converter !== undefined) {
+      const regs = encoded[cell.address];
+      if (!regs) return { invalid: cell.address };
+      values.push(...regs);
+      continue;
+    }
     if (cell.base === 'float') {
       const parsed = parseFloat32(text(cell));
       if (parsed === null) return { invalid: cell.address };
@@ -278,18 +356,49 @@ export function collectWrite(
 
 /** Campo em branco não é erro (ainda não foi preenchido); só o que foi digitado e não vale. */
 export function inputValid(cell: Cell, raw: string, bits: boolean, signed: boolean): boolean {
-  if (!raw.trim()) return true;
+  if (!raw.trim() || cell.converter !== undefined) return true; // o encode do script valida
   return cell.base === 'float' ? parseFloat32(raw) !== null : parseValue(raw, cell.base, bits, signed) !== null;
 }
 
 /** Mensagem se não der para usar `base` em `address` (o registrador já é a 2ª metade de um float,
  *  ou o float passaria por cima de um formato escolhido no seguinte). */
-export function validateFormat(address: number, base: Base, formats: Record<number, Base>): string | null {
+export function validateFormat(
+  address: number,
+  base: Base,
+  formats: Record<number, Base>,
+  converters: Record<number, string> = {},
+  sizes: Record<string, number> = {},
+): string | null {
   if (formats[address - 1] === 'float') return `Register ${address} is consumed by float at address ${address - 1}`;
+  const owner = converterOwner(address, converters, sizes);
+  if (owner !== null && owner !== address) return `Register ${address} is inside the converter at ${owner}`;
+  if (base === 'float' && converters[address + 1] !== undefined) {
+    return `Register ${address + 1} has a converter; cannot extend float at address ${address}`;
+  }
   const next = formats[address + 1];
   if (base === 'float' && next !== undefined && next !== 'float') {
     return `Register ${address + 1} already has an explicit format; cannot extend float at address ${address}`;
   }
+  return null;
+}
+
+/** Mensagem se o converter de `size` registradores não couber a partir de `address`. */
+export function validateConverter(
+  address: number,
+  size: number,
+  formats: Record<number, Base>,
+  converters: Record<number, string>,
+  sizes: Record<string, number>,
+): string | null {
+  if (formats[address - 1] === 'float') return `Register ${address} is consumed by float at address ${address - 1}`;
+  const owner = converterOwner(address, converters, sizes);
+  if (owner !== null && owner !== address) return `Register ${address} is inside the converter at ${owner}`;
+  for (let a = address + 1; a < address + size; a++) {
+    if (formats[a] !== undefined || converters[a] !== undefined) {
+      return `Register ${a} already has its own format; this converter needs ${size} registers from ${address}`;
+    }
+  }
+  if (address + size - 1 > 65535) return 'The converter goes past address 65535';
   return null;
 }
 

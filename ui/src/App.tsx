@@ -4,6 +4,7 @@ import { app } from './appStore';
 import { AboutDialog } from './components/AboutDialog';
 import { BusMonitorDialog } from './components/BusMonitorDialog';
 import { CommCard } from './components/CommCard';
+import { ConvertersDialog } from './components/ConvertersDialog';
 import { RegistersCard } from './components/RegistersCard';
 import { RequestCard } from './components/RequestCard';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -60,6 +61,7 @@ export function App() {
         <BusMonitorDialog />
         <ToolsDialog />
         <AboutDialog />
+        <ConvertersDialog />
       </Show>
       <Toasts />
     </>

@@ -9,8 +9,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@shikijs/langs": "4.6.0",
+    "@shikijs/themes": "4.6.0",
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-opener": "2.7.2",
+    "shiki": "4.6.0",
     "solid-js": "1.9.18"
   },
   "devDependencies": {

@@ -17,6 +17,7 @@ import {
   parseFloat32,
   parseValue,
   startsInsideFloat,
+  validateConverter,
   validateFormat,
 } from './registers';
 
@@ -184,5 +185,57 @@ describe('INI', () => {
     expect(functionFromSetting(2).code).toBe(3);
     expect(functionFromSetting(15).code).toBe(0x0f);
     expect(functionFromSetting(99).code).toBe(1);
+  });
+});
+
+describe('custom converters', () => {
+  const sizes = { u32: 2, st: 1 };
+  const conv = (over: Partial<Grid>) => grid({ count: 4, converters: { 1: 'u32' }, sizes, values: [9, 1, 2, 7], ...over });
+
+  it('a célula inicial mostra o decode e as seguintes viram continuação', () => {
+    const cells = buildRows(conv({ converted: { 1: { value: '65538' } } }))[0].cells;
+    expect(cells.slice(0, 4).map((c) => [c.kind, c.text])).toEqual([
+      ['value', '9'],
+      ['value', '65538'],
+      ['continuation', '—'],
+      ['value', '7'],
+    ]);
+    expect(cells[1].tooltip).toBe('Address : 1 → 2 · u32');
+  });
+
+  it('erro do script vira ERR com a mensagem; pendente mostra -; erro de leitura mostra -/-', () => {
+    const err = buildRows(conv({ converted: { 1: { error: 'u32.lua:3: boom' } } }))[0].cells[1];
+    expect([err.text, err.error]).toEqual(['ERR', 'u32.lua:3: boom']);
+    expect(buildRows(conv({}))[0].cells[1].text).toBe('-');
+    expect(buildRows(conv({ valid: false, values: [] }))[0].cells[1].text).toBe('-/-');
+    const missing = buildRows(conv({ converters: { 1: 'gone' } }))[0].cells[1];
+    expect([missing.text, missing.error]).toEqual(['ERR', "converter 'gone' not found"]);
+  });
+
+  it('cortado no fim do intervalo volta ao formato padrão; começo no meio vira continuação', () => {
+    expect(buildRows(conv({ count: 2, values: [9, 1] }))[0].cells.slice(0, 2).map((c) => c.text)).toEqual(['9', '1']);
+    const inside = buildRows(conv({ start: 2, count: 2, values: [2, 7] }))[0].cells;
+    expect(inside.slice(2, 4).map((c) => c.kind)).toEqual(['continuation', 'value']);
+    expect(startsInsideFloat(buildRows(conv({ start: 2, count: 2, values: [2, 7] })))).toBe(true);
+  });
+
+  it('bobinas ignoram converter', () => {
+    expect(buildRows(conv({ bits: true, values: [1, 0, 1, 0] }))[0].cells[1].text).toBe('0');
+  });
+
+  it('escrita usa o que o encode devolveu; sem encode o campo é inválido', () => {
+    const rows = buildRows(conv({ write: true, converted: { 1: { value: '65538' } } }));
+    expect(collectWrite(rows, editText, false, false, { 1: [1, 2] })).toEqual({ values: [9, 1, 2, 7] });
+    expect(collectWrite(rows, editText, false, false, {})).toEqual({ invalid: 1 });
+  });
+
+  it('não sobrepõe floats, formatos nem outros converters', () => {
+    expect(validateConverter(5, 2, {}, {}, sizes)).toBeNull();
+    expect(validateConverter(5, 2, { 4: 'float' }, {}, sizes)).toMatch(/consumed by float/);
+    expect(validateConverter(5, 2, { 6: 'hex' }, {}, sizes)).toMatch(/Register 6 already/);
+    expect(validateConverter(5, 2, {}, { 4: 'u32' }, sizes)).toMatch(/inside the converter at 4/);
+    expect(validateConverter(4, 1, {}, { 4: 'u32' }, sizes)).toBeNull(); // troca o converter do próprio endereço
+    expect(validateFormat(5, 'hex', {}, { 4: 'u32' }, sizes)).toMatch(/inside the converter/);
+    expect(validateFormat(3, 'float', {}, { 4: 'st' }, sizes)).toMatch(/has a converter/);
   });
 });

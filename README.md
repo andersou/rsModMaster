@@ -20,6 +20,9 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
 - **Bus Monitor**: quadros Tx/Rx brutos e os campos ADU/PDU do quadro escolhido; dá para salvar em `.txt`.
 - **Sessões** (`.fmmsess`, e também `.ses`/`.ini`) e configurações persistidas no INI.
 
+- **Custom converters em Lua** (botão `{ }` na barra de título): um script transforma um ou mais
+  registradores num texto e, se quiser, o texto digitado de volta em registradores. Veja abaixo.
+
 **Atalhos:** `⌘K` / `Ctrl+K` conecta ou desconecta; `⌘↩` / `Ctrl+Enter` lê ou escreve.
 
 **Onde ficam os arquivos:** o `fModMaster.ini` fica na pasta de configuração do app e o log
@@ -51,6 +54,44 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
 - Uma escrita que falha mantém o que foi digitado; uma que dá certo confirma com um aviso.
 - Sem menu nativo: as ações de File, View e Help ficam na barra de título. Não há o "Modbus Manual"
   (o fModMaster só o abria se a documentação do qModMaster estivesse no checkout).
+
+## Custom converters
+
+Cada converter é um arquivo `<id>.lua` na pasta `converters/`, ao lado do `fModMaster.ini` (o diálogo
+**Converters** mostra o caminho). O app traz três exemplos na primeira vez: `int16_div10` (inteiro
+com sinal ÷ 10), `uint32_abcd` (32 bits em 2 registradores) e `status_bits` (bits viram nomes, só
+leitura).
+
+```lua
+return {
+  name = "UInt32 ABCD",          -- opcional (padrão: o nome do arquivo)
+  registers = 2,                 -- opcional (padrão 1, máximo 125)
+  decode = function(regs)        -- regs = { u16, ... } com exatamente `registers` itens
+    return (regs[1] << 16) | regs[2]           -- texto ou número mostrado na célula
+  end,
+  encode = function(text)        -- opcional; sem ele o converter é só leitura
+    local n = math.tointeger(tonumber(text)) or error("integer expected")
+    return { (n >> 16) & 0xFFFF, n & 0xFFFF }  -- exatamente `registers` valores 0..65535
+  end,
+}
+```
+
+- **Usar:** botão direito num registrador → seção *Converters*. A célula inicial mostra o valor e
+  as seguintes mostram `—`, como num float. Erro do script aparece como `ERR` (mensagem no tooltip
+  e num aviso) e o scan continua.
+- **Editar:** o diálogo Converters tem um editor com destaque de sintaxe (Shiki, como o
+  web-diff-viewer). **Save** (`⌘S`/`Ctrl+S`) grava e recarrega na hora, mostrando o erro com a linha;
+  **New** parte de um modelo. Quem preferir outro editor usa **Open Folder** e **Reload**.
+- **Lua 5.4**, o mesmo motor do garten-updater (mlua), mas em sandbox: sem `io`, `os`, `require`,
+  `load` nem `pcall`. Operadores de bit e `string.pack`/`string.unpack` (`">i2"`, `">f"`, `"<I4"`...)
+  cobrem inteiros com sinal, floats e ordem de bytes.
+- **Limites:** 100 mil instruções por chamada e 16 MB de memória (um loop infinito vira erro, não
+  trava o app), texto de até 64 caracteres, até 200 arquivos de 64 KB.
+- **No INI:** seção `[RegisterConverters]` (`endereço = id`). A sessão guarda só o id: em outra
+  máquina sem o arquivo, a célula mostra `ERR`. O qModMaster ignora a seção; o fModMaster a apaga se
+  salvar o INI.
+- **Escrita:** com `encode`, a célula vira campo. Converter só leitura bloqueia a escrita, e um de
+  mais de um registrador exige FC 10.
 
 ## Desenvolvimento
 

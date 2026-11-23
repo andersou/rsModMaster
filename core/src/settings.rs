@@ -43,6 +43,9 @@ pub struct Settings {
     /// Formato por endereço, quando difere do padrão (2 = Bin, 10 = Dec, 16 = Hex, 3 = Float).
     pub register_formats: BTreeMap<i64, i32>,
     pub register_float_endians: BTreeMap<i64, i32>,
+    /// Custom converter por endereço inicial (id = nome do arquivo `.lua`).
+    #[serde(default)]
+    pub register_converters: BTreeMap<i64, String>,
 }
 
 impl Default for Settings {
@@ -75,6 +78,7 @@ impl Default for Settings {
             float_endian: 0,
             register_formats: BTreeMap::new(),
             register_float_endians: BTreeMap::new(),
+            register_converters: BTreeMap::new(),
         }
     }
 }
@@ -179,6 +183,13 @@ impl Settings {
         if let Some(endians) = map("RegisterFloatEndians") {
             self.register_float_endians = endians;
         }
+        if let Some(entries) = ini.get("RegisterConverters") {
+            self.register_converters = entries
+                .iter()
+                .filter_map(|(k, v)| Some((k.parse().ok()?, v.clone())))
+                .filter(|(_, id): &(i64, String)| crate::convert::valid_id(id))
+                .collect();
+        }
     }
 
     pub fn save(&self, path: &Path) -> io::Result<()> {
@@ -244,6 +255,13 @@ impl Settings {
         if !self.register_float_endians.is_empty() {
             sections.push(("RegisterFloatEndians", pairs(&self.register_float_endians)));
         }
+        if !self.register_converters.is_empty() {
+            let entries = self.register_converters.iter();
+            sections.push((
+                "RegisterConverters",
+                entries.map(|(k, v)| (k.to_string(), v.clone())).collect(),
+            ));
+        }
         let mut out = String::new();
         for (name, entries) in sections {
             out.push_str(&format!("[{name}]\n"));
@@ -297,6 +315,18 @@ mod tests {
     }
 
     #[test]
+    fn converter_ids_that_are_not_file_names_are_dropped() {
+        let mut settings = Settings::default();
+        settings.overlay(&parse_ini(
+            "[RegisterConverters]\n10 = ok_id\n11 = ../x\nabc = y\n",
+        ));
+        assert_eq!(
+            settings.register_converters,
+            BTreeMap::from([(10, "ok_id".to_owned())])
+        );
+    }
+
+    #[test]
     fn invalid_numbers_keep_the_default() {
         let mut settings = Settings::default();
         settings.overlay(&parse_ini("[Session]\nSlaveID = abc\nScanRate = 250\n"));
@@ -314,10 +344,17 @@ mod tests {
         };
         settings.register_formats.insert(10, 3);
         settings.register_float_endians.insert(10, 3);
+        settings
+            .register_converters
+            .insert(100, "UInt32_abcd".into());
         settings.save(&path).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("[Session]\nModBusMode = 1\n"), "{text}");
         assert!(text.contains("SlaveIP = 192.168.0.10"));
+        assert!(
+            text.contains("[RegisterConverters]\n100 = UInt32_abcd\n"),
+            "{text}"
+        );
         assert_eq!(Settings::load(&path).unwrap(), settings);
         fs::remove_file(path).unwrap();
     }

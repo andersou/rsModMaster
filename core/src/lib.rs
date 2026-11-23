@@ -2,6 +2,7 @@
 //! decodificação do bus monitor ([`frame`]), o INI do qModMaster ([`settings`]) e os comandos de
 //! diagnóstico do Tools (ping e porta TCP).
 
+pub mod convert;
 pub mod frame;
 pub mod master;
 pub mod settings;
