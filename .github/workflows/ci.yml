@@ -100,7 +100,7 @@ jobs:
             runner: ubuntu-22.04 # glibc mais antiga: roda em mais distros
             archive: rsModMaster-linux-x64.tar.gz
           - platform: macos
-            runner: macos-26
+            runner: macos-15 # macos-26 (arm64) ficou sem capacidade no GitHub
             archive: rsModMaster-macos-arm64.tar.gz
           - platform: windows
             runner: windows-latest
