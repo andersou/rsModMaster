@@ -1,0 +1,13 @@
+[package]
+name = "modmaster-core"
+description = "Núcleo do rsModMaster: Modbus RTU/TCP, scan, decodificação do bus monitor e INI (sem UI)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+# sem libudev: o CI e o Linux do usuário não precisam do pacote de desenvolvimento
+serialport = { version = "4", default-features = false }
+serde.workspace = true
+log.workspace = true

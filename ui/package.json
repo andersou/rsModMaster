@@ -1,0 +1,23 @@
+{
+  "name": "rsmodmaster-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p . && vite build",
+    "check": "tsc -p .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-opener": "2.7.2",
+    "solid-js": "1.9.18"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "7.0.2",
+    "vite": "8.3.7",
+    "vite-plugin-solid": "2.11.15",
+    "vitest": "5.1.0"
+  }
+}

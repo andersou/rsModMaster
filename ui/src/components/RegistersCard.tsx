@@ -1,0 +1,166 @@
+import { createSignal, For, onCleanup, onMount, Show } from 'solid-js';
+import { app } from '../appStore';
+import { type Base, type Cell, ENDIAN_LABELS, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
+import { Icon } from './Icon';
+
+const COLUMNS = Array.from({ length: GRID_WIDTH }, (_, i) => String(i).padStart(2, '0'));
+
+interface Menu {
+  address: number;
+  x: number;
+  y: number;
+}
+
+/** Formato de um endereço pelo botão direito, como o menu de contexto do fModMaster. */
+function FormatMenu(props: { menu: Menu; onClose: () => void }) {
+  let ref!: HTMLDivElement;
+  const pick = (base: Base, endian?: Endian) => {
+    app.setFormat(props.menu.address, base, endian);
+    props.onClose();
+  };
+  const close = (event: Event) => {
+    if (event instanceof KeyboardEvent ? event.key === 'Escape' : !ref.contains(event.target as Node)) props.onClose();
+  };
+  onMount(() => {
+    document.addEventListener('pointerdown', close, true);
+    document.addEventListener('keydown', close, true);
+    ref.querySelector('button')?.focus();
+  });
+  onCleanup(() => {
+    document.removeEventListener('pointerdown', close, true);
+    document.removeEventListener('keydown', close, true);
+  });
+  const floatBlocked = () => app.singleRegisterWrite();
+  return (
+    <div
+      ref={ref}
+      class="menu"
+      role="menu"
+      aria-label={`Format of register ${props.menu.address}`}
+      style={{ left: `${Math.min(props.menu.x, innerWidth - 200)}px`, top: `${Math.min(props.menu.y, innerHeight - 300)}px` }}
+    >
+      <div class="menu-title">Register {props.menu.address}</div>
+      <button role="menuitem" type="button" onClick={() => pick('dec')}>
+        Dec
+      </button>
+      <button role="menuitem" type="button" onClick={() => pick('bin')}>
+        Bin
+      </button>
+      <button role="menuitem" type="button" onClick={() => pick('hex')}>
+        Hex
+      </button>
+      <For each={ENDIAN_LABELS}>
+        {(label, i) => (
+          <button
+            role="menuitem"
+            type="button"
+            disabled={floatBlocked()}
+            title={floatBlocked() ? 'Float requires Write Multiple Registers (FC 10).' : undefined}
+            onClick={() => pick('float', i() as Endian)}
+          >
+            Float {label}
+          </button>
+        )}
+      </For>
+      <div class="hairline" />
+      <button
+        role="menuitem"
+        type="button"
+        onClick={() => {
+          app.resetFormat(props.menu.address);
+          props.onClose();
+        }}
+      >
+        Reset to default
+      </button>
+    </div>
+  );
+}
+
+function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) => void }) {
+  const bits = () => app.spec().bits;
+  const signed = () => app.grid().signed;
+  const text = () => app.cellText(props.cell);
+  const invalid = () => app.invalidCell() === props.cell.address || !inputValid(props.cell, text(), bits(), signed());
+  return (
+    <td
+      class={`cell ${props.cell.kind}`}
+      classList={{ overridden: props.cell.overridden, bad: !app.grid().valid && props.cell.kind !== 'unused' }}
+      title={props.cell.tooltip || undefined}
+      onContextMenu={(e) => props.onMenu(e, props.cell)}
+    >
+      <Show when={props.cell.editable} fallback={props.cell.text}>
+        <input
+          aria-label={props.cell.tooltip}
+          classList={{ invalid: invalid() }}
+          spellcheck={false}
+          autocomplete="off"
+          maxLength={maxLength(props.cell.base, bits(), signed())}
+          value={text()}
+          disabled={app.scanning()}
+          onInput={(e) => app.setEdit(props.cell.address, e.currentTarget.value)}
+        />
+      </Show>
+    </td>
+  );
+}
+
+/** Tabela de 10 colunas e as ações de leitura/escrita, scan e limpar. */
+export function RegistersCard() {
+  const [menu, setMenu] = createSignal<Menu | null>(null);
+  const onMenu = (event: MouseEvent, cell: Cell) => {
+    event.preventDefault();
+    if (cell.kind === 'unused' || app.spec().bits || app.scanning()) return;
+    setMenu({ address: cell.address, x: event.clientX, y: event.clientY });
+  };
+  const columns = () => (app.quantity() === 1 ? COLUMNS.slice(0, 1) : COLUMNS);
+  const write = () => app.spec().write;
+  const disabled = () => !app.connected() || app.scanning() || app.busy();
+  return (
+    <section class="card registers" aria-labelledby="registers-title">
+      <div class="card-head">
+        <h2 class="section-title" id="registers-title">
+          <Icon name="table" />
+          Registers
+        </h2>
+        <span class="context">
+          {app.quantity()} × {app.spec().bits ? 'coil' : 'register'} · right-click a register to change its format
+        </span>
+        <span class="spacer" />
+        <button class="btn primary" classList={{ loading: app.busy() && !app.scanning() }} type="button" disabled={disabled()} onClick={app.readWrite}>
+          <Icon name={write() ? 'pencil' : 'play'} />
+          {write() ? 'Write' : 'Read'}
+        </button>
+        <button class="btn outline" type="button" disabled={!app.connected() || (app.busy() && !app.scanning())} onClick={app.toggleScan}>
+          <Icon name={app.scanning() ? 'square' : 'refresh-cw'} />
+          {app.scanning() ? 'Stop' : 'Scan'}
+        </button>
+        <button class="btn ghost" type="button" disabled={app.scanning()} onClick={app.clearTable}>
+          <Icon name="eraser" />
+          Clear Table
+        </button>
+      </div>
+      <div class="grid-scroll">
+        <table class="grid" classList={{ write: write() }}>
+          <thead>
+            <tr>
+              <th scope="col" class="corner" />
+              <For each={columns()}>{(c) => <th scope="col">{c}</th>}</For>
+            </tr>
+          </thead>
+          <tbody>
+            <For each={app.rows()}>
+              {(row) => (
+                <tr>
+                  <th scope="row">{formatAddress(row.address, app.form.addrHex)}</th>
+                  <For each={row.cells}>{(cell) => <CellView cell={cell} onMenu={onMenu} />}</For>
+                </tr>
+              )}
+            </For>
+          </tbody>
+        </table>
+      </div>
+      <Show when={menu()}>{(m) => <FormatMenu menu={m()} onClose={() => setMenu(null)} />}</Show>
+    </section>
+  );
+}

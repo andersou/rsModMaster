@@ -1,0 +1,35 @@
+# Dois pacotes: o núcleo (`core/`, sem UI) e o app desktop (este, Tauri).
+# `cargo test`/`cargo clippy` cobrem os dois.
+[workspace]
+members = ["core"]
+default-members = [".", "core"]
+
+[workspace.package]
+version = "0.0.0-dev"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+
+[workspace.dependencies]
+modmaster-core = { path = "core" }
+serde = { version = "1", features = ["derive"] }
+log = "0.4"
+
+[package]
+name = "rsmodmaster"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[build-dependencies]
+tauri-build = { version = "2.7", features = [] }
+
+[dependencies]
+modmaster-core.workspace = true
+tauri = { version = "2.12", features = [] }
+tauri-plugin-dialog = "2.8"
+tauri-plugin-opener = "2.7"
+tauri-plugin-log = "2"
+serde.workspace = true
+log.workspace = true

@@ -1,0 +1,169 @@
+# Checagens em todo push e PR; em `main` (e `next`, pré-release), versão pelo semantic-release,
+# binários de Linux, macOS e Windows com essa versão e a release no GitHub.
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/next' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  TAURI_LINUX_DEPS: libwebkit2gtk-4.1-dev libxdo-dev libayatana-appindicator3-dev librsvg2-dev
+  SEMANTIC_RELEASE: npx --yes -p semantic-release@26.0.1 -p @semantic-release/exec@7.1.0 -p @semantic-release/git@11.0.1 semantic-release
+
+jobs:
+  # Tipos, Vitest e o ui/dist que o desktop embute; depois fmt, clippy e testes do workspace.
+  check:
+    name: Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: UI (Vitest, tipos, build)
+        working-directory: ui
+        run: |
+          npm ci
+          npx vitest run
+          npm run build
+      - name: Tauri dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TAURI_LINUX_DEPS
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  # Próxima versão (semantic-release em dry-run). Sem commit que gere versão, `version` fica vazio e
+  # os builds saem só como artefatos do workflow, com a versão 0.0.0-dev.
+  version:
+    name: Next version
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/next')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # o dry-run confere se poderia publicar a tag
+    outputs:
+      version: ${{ steps.next.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # histórico e tags completos, senão a versão sai errada
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: next
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          ONLY_VERSION: "1"
+        run: |
+          $SEMANTIC_RELEASE --dry-run
+          echo "version=$(cat .version 2>/dev/null)" >> "$GITHUB_OUTPUT"
+      # a versão vai para o Cargo.toml e o Cargo.lock que os builds usam
+      - name: Set version
+        if: steps.next.outputs.version != ''
+        run: |
+          sed -i "/^\[workspace.package\]/,/^\[/s/^version = \".*\"/version = \"${{ steps.next.outputs.version }}\"/" Cargo.toml
+          cargo update --workspace
+          grep -A1 '^name = "rsmodmaster"$' Cargo.lock
+      - if: steps.next.outputs.version != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: versioned-manifests
+          path: |
+            Cargo.toml
+            Cargo.lock
+
+  build:
+    name: Build ${{ matrix.platform }}
+    needs: [check, version]
+    # roda também quando `version` é pulado (PRs e outras branches)
+    if: ${{ !cancelled() && needs.check.result == 'success' && needs.version.result != 'failure' }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            runner: ubuntu-22.04 # glibc mais antiga: roda em mais distros
+            archive: rsModMaster-linux-x64.tar.gz
+          - platform: macos
+            runner: macos-26
+            archive: rsModMaster-macos-arm64.tar.gz
+          - platform: windows
+            runner: windows-latest
+            archive: rsModMaster-windows-x64.zip
+    steps:
+      - uses: actions/checkout@v4
+      - if: needs.version.outputs.version != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: versioned-manifests
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: UI
+        working-directory: ui
+        run: |
+          npm ci
+          npm run build
+      - name: Tauri dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends $TAURI_LINUX_DEPS
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # o que o `tauri build` faria, sem o Tauri CLI
+      - name: Build
+        run: cargo build --release --locked -p rsmodmaster --features tauri/custom-protocol
+      - name: Archive (Linux, macOS)
+        if: runner.os != 'Windows'
+        run: tar -czf "${{ matrix.archive }}" -C target/release rsmodmaster
+      - name: Archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/release/rsmodmaster.exe -DestinationPath "${{ matrix.archive }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rsModMaster-${{ matrix.platform }}
+          path: ${{ matrix.archive }}
+          if-no-files-found: error
+          compression-level: 0
+
+  # Tag, release com os 3 binários e o commit da versão no Cargo.toml/Cargo.lock ([skip ci]).
+  release:
+    name: Release
+    needs: [version, build]
+    if: ${{ !cancelled() && needs.version.outputs.version != '' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: rsModMaster-*
+          path: release
+          merge-multiple: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable # o `cargo update --workspace` do prepareCmd
+      - env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: $SEMANTIC_RELEASE
