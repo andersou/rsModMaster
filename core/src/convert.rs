@@ -220,12 +220,14 @@ impl Converters {
         let counter = budget.clone();
         let triggers = HookTriggers::new().every_nth_instruction(HOOK_EVERY);
         let hook = lua.set_hook(triggers, move |_, _| {
-            match counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1)) {
-                Ok(_) => Ok(VmState::Continue),
-                Err(_) => Err(mlua::Error::RuntimeError(format!(
+            // o hook roda na thread que segura a VM (atrás do Mutex): sem corrida entre ler e baixar
+            if counter.load(Ordering::Relaxed) == 0 {
+                return Err(mlua::Error::RuntimeError(format!(
                     "instruction limit exceeded ({MAX_INSTRUCTIONS})"
-                ))),
+                )));
             }
+            counter.fetch_sub(1, Ordering::Relaxed);
+            Ok(VmState::Continue)
         });
         hook.expect("instruction hook");
         Converters {
