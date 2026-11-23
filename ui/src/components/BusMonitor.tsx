@@ -1,4 +1,4 @@
-import { createEffect, createSignal, For, on, Show } from 'solid-js';
+import { createEffect, createSignal, For, on, onMount, Show } from 'solid-js';
 import { api } from '../api';
 import { app, type RawLine } from '../appStore';
 import { localIso } from '../lib/time';
@@ -47,7 +47,8 @@ export function BusTools() {
  *  dá para ler, escrever e escanear olhando os quadros. */
 export function BusView() {
   let list!: HTMLDivElement;
-  // segue o fim da lista enquanto o usuário não rolar para cima
+  // abre já no fim (os quadros mais recentes) e segue o fim enquanto o usuário não rolar para cima
+  onMount(() => (list.scrollTop = list.scrollHeight));
   createEffect(
     on(app.raw, () => {
       if (list && list.scrollHeight - list.scrollTop - list.clientHeight < 48) queueMicrotask(() => (list.scrollTop = list.scrollHeight));
