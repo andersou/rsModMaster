@@ -724,3 +724,46 @@ a:hover { color: var(--link-hover); }
 .menu-label { margin: 0 4px 4px; }
 .menu-label input { min-width: 0; }
 .registers .card-head .segmented { margin-left: 0; }
+
+/* ---- log (painel que sobe da barra de status) ---- */
+.log-panel {
+  position: fixed;
+  z-index: 30;
+  left: 0;
+  right: 0;
+  bottom: 36px;
+  height: min(42vh, 360px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+  box-shadow: 0 -12px 32px var(--shadow);
+}
+.log-panel[hidden] { display: none; }
+.log-head { display: flex; align-items: center; gap: 8px; }
+.log-head .search { width: 240px; flex: none; }
+.log-sep { width: 1px; height: 20px; background: var(--border); }
+.levels { display: flex; gap: 2px; }
+.log-panel .log-box { flex: 1; min-height: 0; }
+.log-row .lvl {
+  flex: none;
+  width: 52px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+.lvl-debug .lvl, .lvl-debug .msg { color: var(--muted); }
+.lvl-info .lvl { color: var(--info); }
+.lvl-warn .lvl { color: var(--warning); }
+.lvl-error .lvl, .lvl-error .msg { color: var(--danger); }
+.log-empty .btn { margin-top: 8px; }
+.jump { position: absolute; right: 16px; bottom: 12px; box-shadow: 0 4px 16px var(--shadow); background: var(--accent); border-color: var(--border); }
+.log-toggle.active { background: var(--accent); color: var(--fg); }
+.badge { min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--danger-strong); color: #fff; font-size: 10px; font-weight: 600; line-height: 16px; text-align: center; }

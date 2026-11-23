@@ -27,7 +27,7 @@ export const api = {
   /** `null`: o usuário cancelou o diálogo */
   loadSession: () => invoke<Settings | null>('load_session'),
   saveSession: (settings: Settings) => invoke<string | null>('save_session', { settings }),
-  saveText: (text: string, name: string) => invoke<string | null>('save_text', { text, name }),
+  saveText: (text: string, name: string, title: string) => invoke<string | null>('save_text', { text, name, title }),
   serialPorts: () => invoke<string[]>('serial_ports'),
   connectRtu: (cfg: RtuConfig) => invoke<void>('connect_rtu', { cfg }),
   connectTcp: (cfg: TcpConfig) => invoke<void>('connect_tcp', { cfg }),

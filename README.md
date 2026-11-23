@@ -34,8 +34,14 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
 
 **Atalhos:** `⌘K` / `Ctrl+K` conecta ou desconecta; `⌘↩` / `Ctrl+Enter` lê ou escreve.
 
+**Log:** o botão **Log** na barra de status (ou o da barra de título) abre um painel por cima, como
+o console de devtools: conexões, erros de transação e mensagens dos converters desde que o app abriu,
+com busca, filtro por nível (OR, como no garten-updater), copiar e exportar as linhas visíveis.
+O botão mostra um selo com os erros chegados com o painel fechado; o histórico completo fica no
+arquivo, aberto pelo ícone do painel.
+
 **Onde ficam os arquivos:** o `fModMaster.ini` fica na pasta de configuração do app e o log
-(`rsModMaster.log`, aberto pelo botão **Log File**) na pasta de logs. Na primeira vez, um
+(`rsModMaster.log`) na pasta de logs. Na primeira vez, um
 `fModMaster.ini` na pasta atual ou ao lado do executável é copiado para lá.
 
 | sistema | INI | log |

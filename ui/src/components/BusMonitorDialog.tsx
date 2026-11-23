@@ -22,7 +22,7 @@ export function BusMonitorDialog() {
   const save = async () => {
     const text = app.raw().map(lineText).join('\n');
     try {
-      const path = await api.saveText(text ? `${text}\n` : '', 'bus-monitor.txt');
+      const path = await api.saveText(text ? `${text}\n` : '', 'bus-monitor.txt', 'Save Bus Monitor Raw Data');
       if (path) toast(`Saved to ${path}`);
     } catch (err) {
       toast(String(err), 'danger');

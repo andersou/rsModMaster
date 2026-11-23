@@ -5,6 +5,7 @@ import { AboutDialog } from './components/AboutDialog';
 import { BusMonitorDialog } from './components/BusMonitorDialog';
 import { CommCard } from './components/CommCard';
 import { ConvertersDialog } from './components/ConvertersDialog';
+import { LogPanel } from './components/LogPanel';
 import { RegistersCard } from './components/RegistersCard';
 import { RequestCard } from './components/RequestCard';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -12,6 +13,7 @@ import { StatusBar } from './components/StatusBar';
 import { TitleBar } from './components/TitleBar';
 import { ToolsDialog } from './components/ToolsDialog';
 import { Toasts } from './components/Toasts';
+import { logs } from './logStore';
 import { isMac } from './platform';
 import { toast } from './toasts';
 
@@ -43,6 +45,7 @@ export function App() {
     document.addEventListener('contextmenu', onContextMenu);
     // ouvir antes do primeiro comando: nenhum quadro do bus monitor se perde
     await api.onCoreEvents(app.onCoreEvents);
+    await logs.listen();
     await app.init().catch((err) => toast(String(err), 'danger'));
   });
   onCleanup(() => {
@@ -66,6 +69,7 @@ export function App() {
         <ToolsDialog />
         <AboutDialog />
         <ConvertersDialog />
+        <LogPanel />
       </Show>
       <Toasts />
     </>

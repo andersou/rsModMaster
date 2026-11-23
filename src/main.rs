@@ -112,15 +112,15 @@ async fn save_session(window: WebviewWindow, settings: Settings) -> Result<Optio
     Ok(Some(path.display().to_string()))
 }
 
-/// Linhas do bus monitor num `.txt` escolhido pelo usuário.
+/// Texto (linhas do bus monitor, log exportado) num arquivo escolhido pelo usuário.
 #[tauri::command]
 async fn save_text(
     window: WebviewWindow,
     text: String,
     name: String,
+    title: String,
 ) -> Result<Option<String>, String> {
-    let Some(path) = save_dialog(&window, "Save Bus Monitor Raw Data", &name, ("Text", "txt"))
-    else {
+    let Some(path) = save_dialog(&window, &title, &name, ("Text", "txt")) else {
         return Ok(None);
     };
     fs::write(&path, text).map_err(|err| format!("Could not save {}: {err}", path.display()))?;
@@ -154,13 +154,17 @@ fn serial_ports() -> Vec<String> {
 #[tauri::command]
 async fn connect_rtu(master: State<'_, Shared>, cfg: Rtu) -> Result<(), String> {
     let master = master.inner().clone();
-    blocking(move || master.connect_rtu(&cfg)).await?
+    blocking(move || master.connect_rtu(&cfg))
+        .await?
+        .inspect_err(|err| log::error!("{err}"))
 }
 
 #[tauri::command]
 async fn connect_tcp(master: State<'_, Shared>, cfg: Tcp) -> Result<(), String> {
     let master = master.inner().clone();
-    blocking(move || master.connect_tcp(&cfg)).await?
+    blocking(move || master.connect_tcp(&cfg))
+        .await?
+        .inspect_err(|err| log::error!("{err}"))
 }
 
 #[tauri::command]
@@ -431,6 +435,9 @@ fn main() {
                     tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
                         file_name: Some(LOG.into()),
                     }),
+                    // painel de log da tela: só a mensagem (hora e nível ele mostra)
+                    tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview)
+                        .format(|out, message, _| out.finish(format_args!("{message}"))),
                 ])
                 .build(),
         )
