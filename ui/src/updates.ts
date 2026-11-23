@@ -18,17 +18,21 @@ export const updates = {
     localStorage.setItem(KEY, String(value));
     setEnabledSignal(value);
   },
-  async check() {
+  /** `new`: há versão nova (o botão aparece); `latest`: já é a última; `error`: sem resposta. */
+  async check(): Promise<'new' | 'latest' | 'error'> {
     try {
       const res = await fetch(RELEASES_API, { headers: { Accept: 'application/vnd.github+json' }, signal: AbortSignal.timeout(10_000) });
-      if (!res.ok) return;
+      if (!res.ok) return 'error';
       const release = (await res.json()) as { tag_name?: unknown; html_url?: unknown };
       const { tag_name: tag, html_url: url } = release;
       // só um link do próprio GitHub (o opener também só abre github.com)
-      if (typeof tag !== 'string' || typeof url !== 'string' || !url.startsWith('https://github.com/')) return;
-      if (isNewer(tag, __APP_VERSION__)) setAvailable({ version: tag.replace(/^v/, ''), url });
+      if (typeof tag !== 'string' || typeof url !== 'string' || !url.startsWith('https://github.com/')) return 'error';
+      if (!isNewer(tag, __APP_VERSION__)) return 'latest';
+      setAvailable({ version: tag.replace(/^v/, ''), url });
+      return 'new';
     } catch {
-      // sem rede ou limite da API: tenta de novo na próxima inicialização
+      // sem rede ou limite da API: tenta de novo na próxima inicialização (ou no botão do About)
+      return 'error';
     }
   },
 };

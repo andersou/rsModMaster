@@ -30,7 +30,7 @@ mesmas sessões `.fmmsess`. O núcleo é Rust, a janela é Tauri 2 e a tela é S
 | **Tools** | Report Slave ID, ping e teste da porta TCP |
 | **Sessões** | `.fmmsess` (e `.ses`/`.ini` do qModMaster), configurações num INI compatível |
 | **Tema** | claro, escuro ou o do sistema |
-| **Novas versões** | ao iniciar, consulta as releases do GitHub; se houver uma nova, o botão *Download* na barra de título abre a página dela (a atualização é manual). Desliga em *Settings → General* |
+| **Novas versões** | ao iniciar, consulta as releases do GitHub; se houver uma nova, o botão *Download* na barra de título abre a página dela (a atualização é manual). Desliga em *Settings → General*; *About → Check for updates* verifica na hora |
 | **Idioma** | inglês, português ou espanhol (EN/PT/ES na barra de título; na primeira vez, o do sistema) |
 
 ## Baixar e instalar

@@ -619,6 +619,9 @@ a:hover { color: var(--link-hover); }
   font-size: 12px;
 }
 .statusbar .status { color: var(--fg); }
+/* botões juntos à direita; o gap largo da barra fica entre os contadores */
+.about-version { align-items: center; gap: 12px; }
+.statusbar-actions { display: flex; align-items: center; gap: 4px; }
 .statusbar .has-errors { color: var(--danger); }
 
 /* ---- diálogos ---- */

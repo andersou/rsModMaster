@@ -269,6 +269,10 @@ export const en = {
     reloaded: 'Converters reloaded',
   },
   update: {
+    checkNow: 'Check for updates',
+    latest: 'You have the latest version.',
+    failed: 'Could not reach GitHub. Try again later.',
+    available: 'Version {{ version }} is available.',
     download: 'Download v{{ version }}',
     title: 'rsModMaster {{ version }} is available (you have {{ current }}). Opens the release page to download it.',
   },

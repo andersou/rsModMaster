@@ -266,6 +266,10 @@ export const es: Dict = {
     reloaded: 'Converters recargados',
   },
   update: {
+    checkNow: 'Buscar actualizaciones',
+    latest: 'Ya tiene la versión más reciente.',
+    failed: 'No se pudo consultar GitHub. Inténtelo más tarde.',
+    available: 'La versión {{ version }} está disponible.',
     download: 'Descargar v{{ version }}',
     title: 'rsModMaster {{ version }} está disponible (tiene la {{ current }}). Abre la página de la versión para descargarla.',
   },
