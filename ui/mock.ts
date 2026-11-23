@@ -4,6 +4,14 @@
 import { emit } from '@tauri-apps/api/event';
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 mockWindows('main');
+// `mock.html?update`: o GitHub responde com uma versão nova (o botão de baixar aparece)
+if (location.search.includes('update')) {
+  const real = window.fetch.bind(window);
+  window.fetch = (input, init) =>
+    String(input).includes('api.github.com')
+      ? Promise.resolve(new Response(JSON.stringify({ tag_name: 'v9.0.0', html_url: 'https://github.com/andersou/rsModMaster/releases/tag/v9.0.0' })))
+      : real(input, init);
+}
 const settings = {
   tcpPort: '5020', slaveIp: '127.0.0.1', serialDev: '/dev/ttyS', serialPort: '1', serialPortName: '/dev/ttyS0', baud: '9600',
   dataBits: '8', stopBits: '1', parity: 'None', rts: 'None', maxNoOfLines: '60', baseAddr: '0', timeOut: '0', loggingLevel: 3,

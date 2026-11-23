@@ -16,6 +16,7 @@ import { logs } from './logStore';
 import { isMac } from './platform';
 import { errorText } from './i18n';
 import { toast } from './toasts';
+import { updates } from './updates';
 
 /** Atalhos: ⌘↩ / Ctrl+Enter lê ou escreve; ⌘K / Ctrl+K conecta ou desconecta; ⌘G / Ctrl+G alterna
  *  tabela e gráfico (nunca sob um diálogo). */
@@ -47,6 +48,7 @@ export function App() {
     await api.onCoreEvents(app.onCoreEvents);
     await logs.listen();
     await app.init().catch((err) => toast(errorText(err), 'danger'));
+    if (updates.enabled()) void updates.check();
   });
   onCleanup(() => {
     document.removeEventListener('keydown', onShortcut);

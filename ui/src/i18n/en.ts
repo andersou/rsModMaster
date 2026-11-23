@@ -241,6 +241,7 @@ export const en = {
     timeoutHint: 'Timeouts under 1000 ms are raised to 1000 ms when connecting.',
     applyNext: 'Connection changes apply the next time you connect.',
     fixFields: 'Fix the highlighted fields (in any tab) before saving.',
+    checkUpdates: 'Check for new versions at startup',
   },
   converters: {
     title: 'Converters',
@@ -266,6 +267,10 @@ export const en = {
     badName: 'Use letters, digits, _ and - in the name.',
     exists: '{{ file }} already exists.',
     reloaded: 'Converters reloaded',
+  },
+  update: {
+    download: 'Download v{{ version }}',
+    title: 'rsModMaster {{ version }} is available (you have {{ current }}). Opens the release page to download it.',
   },
   about: {
     title: 'About rsModMaster',

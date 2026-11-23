@@ -239,6 +239,7 @@ export const es: Dict = {
     timeoutHint: 'Los tiempos de espera menores de 1000 ms pasan a 1000 ms al conectar.',
     applyNext: 'Los cambios de conexión se aplican la próxima vez que se conecte.',
     fixFields: 'Corrija los campos resaltados (en cualquier pestaña) antes de guardar.',
+    checkUpdates: 'Buscar nuevas versiones al iniciar',
   },
   converters: {
     title: 'Converters',
@@ -263,6 +264,10 @@ export const es: Dict = {
     badName: 'Use letras, números, _ y - en el nombre.',
     exists: '{{ file }} ya existe.',
     reloaded: 'Converters recargados',
+  },
+  update: {
+    download: 'Descargar v{{ version }}',
+    title: 'rsModMaster {{ version }} está disponible (tiene la {{ current }}). Abre la página de la versión para descargarla.',
   },
   about: {
     title: 'Acerca de rsModMaster',

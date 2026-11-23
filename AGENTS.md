@@ -138,7 +138,9 @@ cargo test --workspace
   - nada de `style="..."` em strings de HTML nem `innerHTML` com estilo. Estilos dinâmicos vão por
     Solid (`style={{...}}`, `classList`) ou CSSOM, como o `CodeEditor` faz com os tokens do Shiki;
   - **sem WASM**: o Shiki usa o motor de regex em JavaScript (`ui/src/lib/highlight.ts`);
-  - sem scripts inline, fontes ou recursos externos.
+  - sem scripts inline, fontes ou recursos externos. A única saída de rede da webview é o
+    `connect-src https://api.github.com` do aviso de versão nova (`ui/src/updates.ts`); a página da
+    release abre pelo opener, que só aceita `https://github.com/*`.
 - Capabilities mínimas (`capabilities/default.json`): permissão nova só com motivo; `opener` abre
   apenas `https://github.com/*`.
 - `convert_decode`/`convert_encode` aceitam no máximo 125 itens por chamada.

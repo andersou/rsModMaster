@@ -2,6 +2,7 @@ import { createSignal, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { api } from '../api';
 import { app } from '../appStore';
+import { updates } from '../updates';
 import { t, tk } from '../i18n';
 import { ENDIAN_LABELS } from '../lib/registers';
 import { splitSerialPortName, validIp, validPort } from '../lib/settings';
@@ -44,6 +45,8 @@ export function SettingsDialog() {
     };
   };
   const [draft, setDraft] = createStore<Draft>(fromSettings());
+  /** preferência do app (localStorage), aplicada no OK como o resto */
+  const [checkUpdates, setCheckUpdates] = createSignal(updates.enabled());
   const [ports, setPorts] = createSignal<string[]>([]);
   /** porta digitada à mão ("Other…"), fora da lista detectada */
   const [customPort, setCustomPort] = createSignal(false);
@@ -51,6 +54,7 @@ export function SettingsDialog() {
   const refreshPorts = () => api.serialPorts().then(setPorts, () => setPorts([]));
   const reset = () => {
     setDraft(fromSettings());
+    setCheckUpdates(updates.enabled());
     setCustomPort(false);
     setTab(app.form.mode === 'TCP' ? 'tcp' : 'rtu');
     refreshPorts();
@@ -75,6 +79,7 @@ export function SettingsDialog() {
     event.preventDefault();
     if (anyInvalid()) return;
     const [serialDev, serialPort] = splitSerialPortName(draft.serialPortName);
+    updates.setEnabled(checkUpdates());
     await app.saveSettings({ ...draft, serialPortName: draft.serialPortName.trim(), serialDev, serialPort });
     app.setDialog(null);
   };
@@ -159,6 +164,10 @@ export function SettingsDialog() {
             </SelectField>
           </div>
           <p class="muted hint-text">{t('settings.timeoutHint')}</p>
+          <label class="check">
+            <input type="checkbox" checked={checkUpdates()} onChange={(e) => setCheckUpdates(e.currentTarget.checked)} />
+            {t('settings.checkUpdates')}
+          </label>
         </Show>
         <Show when={app.connected()}>
           <p class="muted hint-text">{t('settings.applyNext')}</p>

@@ -1,7 +1,10 @@
+import { Show } from 'solid-js';
+import { api } from '../api';
 import { app } from '../appStore';
 import { LOCALES, locale, setLocale, t } from '../i18n';
 import { panel } from '../panel';
 import { setThemePref, themePref } from '../theme';
+import { updates } from '../updates';
 import { Segmented } from './Segmented';
 import { Icon } from './Icon';
 
@@ -19,6 +22,19 @@ export function TitleBar() {
     <header class="titlebar" data-tauri-drag-region="deep">
       <Icon name="cpu" class="brand" />
       <span class="app-name">rsModMaster</span>
+      <Show when={updates.available()}>
+        {(update) => (
+          <button
+            class="btn primary small"
+            type="button"
+            title={t('update.title', { version: update().version, current: __APP_VERSION__ })}
+            onClick={() => api.openUrl(update().url)}
+          >
+            <Icon name="download" />
+            {t('update.download', { version: update().version })}
+          </button>
+        )}
+      </Show>
       <span class="spacer" />
       <div class="titlebar-group" role="group" aria-label={t('titlebar.session')}>
         {/* trocar a sessão no meio do scan deixaria a thread com a requisição antiga */}

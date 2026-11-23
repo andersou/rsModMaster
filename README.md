@@ -30,6 +30,7 @@ mesmas sessões `.fmmsess`. O núcleo é Rust, a janela é Tauri 2 e a tela é S
 | **Tools** | Report Slave ID, ping e teste da porta TCP |
 | **Sessões** | `.fmmsess` (e `.ses`/`.ini` do qModMaster), configurações num INI compatível |
 | **Tema** | claro, escuro ou o do sistema |
+| **Novas versões** | ao iniciar, consulta as releases do GitHub; se houver uma nova, o botão *Download* na barra de título abre a página dela (a atualização é manual). Desliga em *Settings → General* |
 | **Idioma** | inglês, português ou espanhol (EN/PT/ES na barra de título; na primeira vez, o do sistema) |
 
 ## Baixar e instalar
@@ -264,7 +265,7 @@ apaga se salvar o arquivo:
 | `[RegisterCharts]` | registradores no gráfico e a cor de cada um |
 
 A sessão guarda só o id do converter: em outra máquina sem o arquivo `.lua`, a célula mostra `ERR`.
-O tema, o idioma e a janela de tempo do gráfico ficam gravados no app, não na sessão.
+O tema, o idioma, a verificação de versões e a janela de tempo do gráfico ficam gravados no app, não na sessão.
 
 ## Diferenças em relação ao fModMaster
 
