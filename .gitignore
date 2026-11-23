@@ -5,3 +5,5 @@
 .DS_Store
 /.version
 /release/
+/ui/mock.html
+/ui/mock.ts
