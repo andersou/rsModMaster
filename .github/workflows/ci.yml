@@ -25,8 +25,8 @@ jobs:
     name: Checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -58,12 +58,12 @@ jobs:
     outputs:
       version: ${{ steps.next.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # histórico e tags completos, senão a versão sai errada
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26 # o semantic-release 26 exige Node >= 26.13
       - id: next
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -79,7 +79,7 @@ jobs:
           cargo update --workspace
           grep -A1 '^name = "rsmodmaster"$' Cargo.lock
       - if: steps.next.outputs.version != ''
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: versioned-manifests
           path: |
@@ -106,12 +106,12 @@ jobs:
             runner: windows-latest
             archive: rsModMaster-windows-x64.zip
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - if: needs.version.outputs.version != ''
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: versioned-manifests
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -136,7 +136,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: Compress-Archive -Path target/release/rsmodmaster.exe -DestinationPath "${{ matrix.archive }}"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rsModMaster-${{ matrix.platform }}
           path: ${{ matrix.archive }}
@@ -152,17 +152,17 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: rsModMaster-*
           path: release
           merge-multiple: true
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: 26 # o semantic-release 26 exige Node >= 26.13
       - uses: dtolnay/rust-toolchain@stable # o `cargo update --workspace` do prepareCmd
       - env:
           GITHUB_TOKEN: ${{ github.token }}
