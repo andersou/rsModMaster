@@ -3,7 +3,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import type { Catalog, ConvertResult, CoreEvent, Outcome, Request, Settings } from './lib/types';
+import type { Catalog, ConvertResult, CoreEvent, Outcome, Ping, Request, Settings, SlaveId } from './lib/types';
 
 export interface RtuConfig {
   port: string;
@@ -25,9 +25,10 @@ export const api = {
   loadSettings: () => invoke<Settings>('load_settings'),
   saveSettings: (settings: Settings) => invoke<void>('save_settings', { settings }),
   /** `null`: o usuário cancelou o diálogo */
-  loadSession: () => invoke<Settings | null>('load_session'),
-  saveSession: (settings: Settings) => invoke<string | null>('save_session', { settings }),
-  saveText: (text: string, name: string, title: string) => invoke<string | null>('save_text', { text, name, title }),
+  // títulos e filtros dos diálogos nativos vêm traduzidos da tela
+  loadSession: (title: string, filter: string) => invoke<Settings | null>('load_session', { title, filter }),
+  saveSession: (settings: Settings, title: string, filter: string) => invoke<string | null>('save_session', { settings, title, filter }),
+  saveText: (text: string, name: string, title: string, filter: string) => invoke<string | null>('save_text', { text, name, title, filter }),
   serialPorts: () => invoke<string[]>('serial_ports'),
   connectRtu: (cfg: RtuConfig) => invoke<void>('connect_rtu', { cfg }),
   connectTcp: (cfg: TcpConfig) => invoke<void>('connect_tcp', { cfg }),
@@ -36,8 +37,9 @@ export const api = {
   startScan: (req: Request, rateMs: number) => invoke<void>('start_scan', { req, rateMs }),
   stopScan: () => invoke<void>('stop_scan'),
   resetCounters: () => invoke<void>('reset_counters'),
-  reportSlaveId: (slave: number) => invoke<string>('report_slave_id', { slave }),
-  ping: (ip: string) => invoke<string>('ping', { ip }),
+  reportSlaveId: (slave: number) => invoke<SlaveId>('report_slave_id', { slave }),
+  ping: (ip: string) => invoke<Ping>('ping', { ip }),
+  /** `ip:porta` se a porta aceitou a conexão; fechada é erro */
   portStatus: (ip: string, port: string) => invoke<string>('port_status', { ip, port }),
   openLog: () => invoke<void>('open_log'),
   /** com `reload`, relê a pasta de converters antes */

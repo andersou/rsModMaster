@@ -21,6 +21,8 @@ SolidJS. Sucessor do fModMaster (Python/Flet) e compatível com o INI do qModMas
 | `src/main.rs` (`rsmodmaster`) | **só a cola do desktop**: comandos Tauri, diálogos, caminhos do INI/log/converters, ponte de eventos | sem regra de negócio |
 | `tauri.conf.json`, `capabilities/default.json` | janela, CSP, permissões da webview | não afrouxar sem pedido explícito |
 | `ui/src/lib/*.ts` | **lógica pura da tela** (formatos, grade, gráfico, validação, log, tema), sem DOM | Vitest em `*.test.ts` |
+| `ui/src/i18n/` | idioma da tela: dicionários `en`/`pt`/`es`, `t`, `errorText` | veja "Convenções" |
+| `core/src/msg.rs` | `Msg`: erro para a tela como código + parâmetros | texto em inglês só no `Display` (log) |
 | `ui/src/appStore.ts` | estado (sinais e stores) e as ações que chamam o core | |
 | `ui/src/api.ts` | os comandos e eventos do IPC, tipados | um por comando de `src/main.rs` |
 | `ui/src/components/*.tsx` | componentes Solid | só apresentação |
@@ -69,8 +71,16 @@ cargo test --workspace
 
 ## Convenções
 
-- **Comentários e documentação em pt-BR; textos da UI em inglês** (rótulos, avisos, mensagens de
-  erro e de log, inclusive as geradas no Rust).
+- **Comentários e documentação em pt-BR.** A tela fala inglês, português e espanhol
+  (`@solid-primitives/i18n`, dicionários em `ui/src/i18n/`):
+  - nenhum texto visível fixo em componente: tudo passa por `t('chave')`. Texto novo entra em
+    `en.ts` (a referência) e, com o mesmo formato, em `pt.ts` e `es.ts`; o tipo `Dict` não deixa
+    faltar chave, e um teste confere as chaves e os `{{ parâmetros }}` dos três;
+  - erro que o Rust manda para a tela é um `Msg` (`core/src/msg.rs`: código + parâmetros, com o
+    macro `msg!`); a tela mostra com `errorText(err)`. Código novo vai no `english()` do `msg.rs` e em
+    `errors` dos três dicionários (o mesmo teste confere os dois lados);
+  - o log (arquivo e painel) continua em inglês, que é o que se manda para quem dá suporte;
+  - rótulos em pt/es podem ser mais longos: confira no `mock.html` se os campos estreitos não cortam.
 - Comente o porquê, em uma linha; o código mostra o quê.
 - **Conventional Commits em inglês**, como o histórico (`feat(ui): ...`, `fix(core): ...`). Eles
   geram a versão: `feat` → minor, `fix` → patch, `perf` → patch, `feat!`/`BREAKING CHANGE` → major;

@@ -1,6 +1,7 @@
 // Regras dos campos da tela principal, sem UI: o que não vale fica marcado e bloqueia
 // Read/Write/Scan, em vez de ser ajustado em silêncio (endereço errado num equipamento real).
 
+import { t } from '../i18n';
 import type { FunctionSpec } from './registers';
 
 export const MIN_SCAN_MS = 50;
@@ -36,14 +37,14 @@ export function convertAddress(text: string, fromHex: boolean): string {
 export function validateForm(f: FormInput): FormErrors {
   const errors: FormErrors = {};
   const maxSlave = f.mode === 'TCP' ? 255 : 247;
-  if (!digits(f.slave) || Number(f.slave) > maxSlave) errors.slave = `${f.mode === 'TCP' ? 'Unit ID' : 'Slave address'} must be 0–${maxSlave}`;
-  if (!digits(f.scanRate) || Number(f.scanRate) < MIN_SCAN_MS) errors.scanRate = `Scan rate must be at least ${MIN_SCAN_MS} ms`;
+  if (!digits(f.slave) || Number(f.slave) > maxSlave) errors.slave = t('validation.slaveRange', { label: f.mode === 'TCP' ? t('comm.unitId') : t('validation.slaveAddress'), max: maxSlave });
+  if (!digits(f.scanRate) || Number(f.scanRate) < MIN_SCAN_MS) errors.scanRate = t('validation.scanRate', { min: MIN_SCAN_MS });
   const qtyOk = digits(f.qty) && Number(f.qty) >= f.spec.min && Number(f.qty) <= f.spec.max;
-  if (!qtyOk) errors.qty = `${f.spec.quantityLabel} must be ${f.spec.min}–${f.spec.max}`;
+  if (!qtyOk) errors.qty = t('validation.quantity', { label: f.spec.quantityLabel, min: f.spec.min, max: f.spec.max });
   const start = parseAddress(f.start, f.addrHex);
   const base = digits(f.baseAddr) ? Number(f.baseAddr) : 0;
-  if (start === null) errors.start = `Start address must be a ${f.addrHex ? 'hexadecimal' : 'decimal'} number`;
-  else if (start < base) errors.start = `Start address is below Base Addr (${base})`;
-  else if (start - base + (qtyOk ? Number(f.qty) : 1) - 1 > 65535) errors.start = 'The range goes past address 65535';
+  if (start === null) errors.start = t(f.addrHex ? 'validation.startHex' : 'validation.startDec');
+  else if (start < base) errors.start = t('validation.startBelowBase', { base });
+  else if (start - base + (qtyOk ? Number(f.qty) : 1) - 1 > 65535) errors.start = t('validation.rangePastEnd');
   return errors;
 }

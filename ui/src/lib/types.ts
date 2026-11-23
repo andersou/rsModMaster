@@ -1,5 +1,11 @@
 // Tipos do que vai e volta pelo IPC (camelCase, como o serde do core).
 
+/** Erro do core (`core/src/msg.rs`): código e parâmetros; o texto sai de `errorText` (i18n). */
+export interface Msg {
+  code: string;
+  args: Record<string, string>;
+}
+
 /** INI do qModMaster (core/src/settings.rs). */
 export interface Settings {
   tcpPort: string;
@@ -51,14 +57,14 @@ export interface ConverterInfo {
 export interface Catalog {
   dir: string;
   converters: ConverterInfo[];
-  errors: { file: string; message: string }[];
+  errors: { file: string; message: Msg }[];
   template: string;
 }
 
 /** Resultado de um item de decode/encode: o valor ou o erro do script. */
 export interface ConvertResult<T> {
   value?: T;
-  error?: string;
+  error?: Msg;
 }
 
 export interface Request {
@@ -71,7 +77,7 @@ export interface Request {
 
 export interface Outcome {
   values: number[];
-  error: string | null;
+  error: Msg | null;
   packets: number;
   errors: number;
   /** fim da transação, ms desde 1970 */
@@ -79,5 +85,18 @@ export interface Outcome {
 }
 
 export type CoreEvent =
-  | { kind: 'raw'; tx: boolean; at: number; mode: 'RTU' | 'TCP'; hex: string; detail: string }
+  | { kind: 'raw'; tx: boolean; at: number; mode: 'RTU' | 'TCP'; hex: string; fields: [string, string][] }
   | ({ kind: 'scan' } & Outcome);
+
+/** Report Slave ID: estado (último byte 0xFF) e os bytes de dados (o primeiro é o id). */
+export interface SlaveId {
+  running: boolean;
+  data: number[];
+}
+
+export interface Ping {
+  target: string;
+  success: boolean;
+  /** saída do programa ping do sistema, no idioma dele */
+  output: string;
+}

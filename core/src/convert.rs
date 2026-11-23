@@ -19,6 +19,11 @@ use std::{
 use mlua::{Function, HookTriggers, Lua, LuaOptions, StdLib, Table, Value, VmState};
 use serde::Serialize;
 
+use crate::{Msg, msg};
+
+/// Texto do erro levantado pelo hook; `message` o reconhece para devolver o código.
+const INSTRUCTION_LIMIT: &str = "instruction limit exceeded";
+
 /// Instruções por chamada (`decode`, `encode` ou o topo do arquivo); acima disso, erro.
 pub const MAX_INSTRUCTIONS: u32 = 100_000;
 const HOOK_EVERY: u32 = 1_000;
@@ -59,7 +64,7 @@ pub struct Info {
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct LoadError {
     pub file: String,
-    pub message: String,
+    pub message: Msg,
 }
 
 struct Item {
@@ -85,37 +90,39 @@ pub fn valid_id(id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
 }
 
-fn path_of(dir: &Path, id: &str) -> Result<PathBuf, String> {
+fn path_of(dir: &Path, id: &str) -> Result<PathBuf, Msg> {
     if valid_id(id) {
         Ok(dir.join(format!("{id}.lua")))
     } else {
-        Err(format!(
-            "Invalid converter name '{id}': use letters, digits, _ and -"
-        ))
+        Err(msg!("converter_id", id = id))
     }
 }
 
-pub fn source(dir: &Path, id: &str) -> Result<String, String> {
-    let path = path_of(dir, id)?;
-    fs::read_to_string(&path).map_err(|err| format!("{}: {err}", path.display()))
+fn io(path: &Path, err: std::io::Error) -> Msg {
+    msg!("io", path = path.display(), err = err)
 }
 
-pub fn save(dir: &Path, id: &str, source: &str) -> Result<(), String> {
+pub fn source(dir: &Path, id: &str) -> Result<String, Msg> {
+    let path = path_of(dir, id)?;
+    fs::read_to_string(&path).map_err(|err| io(&path, err))
+}
+
+pub fn save(dir: &Path, id: &str, source: &str) -> Result<(), Msg> {
     let path = path_of(dir, id)?;
     if source.len() > MAX_SOURCE {
-        return Err(format!("Converter is larger than {} KB", MAX_SOURCE / 1024));
+        return Err(msg!("converter_size", kb = MAX_SOURCE / 1024));
     }
-    fs::create_dir_all(dir).map_err(|err| format!("{}: {err}", dir.display()))?;
-    fs::write(&path, source).map_err(|err| format!("{}: {err}", path.display()))
+    fs::create_dir_all(dir).map_err(|err| io(dir, err))?;
+    fs::write(&path, source).map_err(|err| io(&path, err))
 }
 
-pub fn delete(dir: &Path, id: &str) -> Result<(), String> {
+pub fn delete(dir: &Path, id: &str) -> Result<(), Msg> {
     let path = path_of(dir, id)?;
-    fs::remove_file(&path).map_err(|err| format!("{}: {err}", path.display()))
+    fs::remove_file(&path).map_err(|err| io(&path, err))
 }
 
 /// Primeira linha útil de um erro do Lua: a causa de um erro vindo do hook, sem o traceback.
-fn message(err: &mlua::Error) -> String {
+fn message(err: &mlua::Error) -> Msg {
     let err = match err {
         mlua::Error::CallbackError { cause, .. } => cause.as_ref(),
         other => other,
@@ -124,10 +131,13 @@ fn message(err: &mlua::Error) -> String {
         mlua::Error::RuntimeError(text) | mlua::Error::SyntaxError { message: text, .. } => {
             text.clone()
         }
-        mlua::Error::MemoryError(_) => "memory limit exceeded".into(),
+        mlua::Error::MemoryError(_) => return msg!("memory"),
         other => other.to_string(),
     };
-    text.lines().next().unwrap_or_default().to_owned()
+    if text.contains(INSTRUCTION_LIMIT) {
+        return msg!("instructions", max = MAX_INSTRUCTIONS);
+    }
+    msg!("other", text = text.lines().next().unwrap_or_default())
 }
 
 fn truncate(text: &str) -> String {
@@ -157,7 +167,7 @@ impl Converters {
                 .map(|n| n.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let loaded = fs::read_to_string(path)
-                .map_err(|err| err.to_string())
+                .map_err(|err| io(path, err))
                 .and_then(|source| converters.add(&id, &source));
             if let Err(message) = loaded {
                 log::warn!("converter {file}: {message}");
@@ -167,7 +177,7 @@ impl Converters {
         if files.len() > MAX_FILES {
             converters.errors.push(LoadError {
                 file: dir.display().to_string(),
-                message: format!("only the first {MAX_FILES} converters were loaded"),
+                message: msg!("too_many_files", max = MAX_FILES),
             });
         }
         converters
@@ -203,9 +213,7 @@ impl Converters {
         let hook = lua.set_hook(triggers, move |_, _| {
             // o hook roda na thread que segura a VM (atrás do Mutex): sem corrida entre ler e baixar
             if counter.load(Ordering::Relaxed) == 0 {
-                return Err(mlua::Error::RuntimeError(format!(
-                    "instruction limit exceeded ({MAX_INSTRUCTIONS})"
-                )));
+                return Err(mlua::Error::RuntimeError(INSTRUCTION_LIMIT.into()));
             }
             counter.fetch_sub(1, Ordering::Relaxed);
             Ok(VmState::Continue)
@@ -235,12 +243,12 @@ impl Converters {
         Ok(env)
     }
 
-    fn add(&mut self, id: &str, source: &str) -> Result<(), String> {
+    fn add(&mut self, id: &str, source: &str) -> Result<(), Msg> {
         if !valid_id(id) {
-            return Err("invalid file name: use letters, digits, _ and -".into());
+            return Err(msg!("converter_id", id = id));
         }
         if source.len() > MAX_SOURCE {
-            return Err(format!("larger than {} KB", MAX_SOURCE / 1024));
+            return Err(msg!("converter_size", kb = MAX_SOURCE / 1024));
         }
         let env = self.environment().map_err(|err| message(&err))?;
         self.reset_budget();
@@ -254,7 +262,7 @@ impl Converters {
         let name = match table.get::<Value>("name").map_err(|err| message(&err))? {
             Value::Nil => id.to_owned(),
             Value::String(name) => truncate(&name.to_string_lossy()),
-            _ => return Err("name must be a string".into()),
+            _ => return Err(msg!("name_type")),
         };
         let registers = match table
             .get::<Value>("registers")
@@ -262,20 +270,16 @@ impl Converters {
         {
             Value::Nil => 1,
             Value::Integer(n) if (1..=MAX_REGISTERS as i64).contains(&n) => n as usize,
-            _ => {
-                return Err(format!(
-                    "registers must be an integer from 1 to {MAX_REGISTERS}"
-                ));
-            }
+            _ => return Err(msg!("registers_range", max = MAX_REGISTERS)),
         };
         let decode = match table.get::<Value>("decode").map_err(|err| message(&err))? {
             Value::Function(f) => f,
-            _ => return Err("decode(regs) function is missing".into()),
+            _ => return Err(msg!("decode_missing")),
         };
         let encode = match table.get::<Value>("encode").map_err(|err| message(&err))? {
             Value::Function(f) => Some(f),
             Value::Nil => None,
-            _ => return Err("encode must be a function".into()),
+            _ => return Err(msg!("encode_type")),
         };
         let info = Info {
             id: id.to_owned(),
@@ -302,20 +306,21 @@ impl Converters {
         &self.errors
     }
 
-    fn item(&self, id: &str) -> Result<&Item, String> {
+    fn item(&self, id: &str) -> Result<&Item, Msg> {
         self.items
             .get(id)
-            .ok_or_else(|| format!("converter '{id}' not found"))
+            .ok_or_else(|| msg!("converter_missing", id = id))
     }
 
     /// Texto da célula a partir de exatamente `registers` valores.
-    pub fn decode(&self, id: &str, regs: &[u16]) -> Result<String, String> {
+    pub fn decode(&self, id: &str, regs: &[u16]) -> Result<String, Msg> {
         let item = self.item(id)?;
         if regs.len() != item.info.registers {
-            return Err(format!(
-                "{id} needs {} register(s), got {}",
-                item.info.registers,
-                regs.len()
+            return Err(msg!(
+                "decode_count",
+                id = id,
+                need = item.info.registers,
+                got = regs.len()
             ));
         }
         let table = self
@@ -329,42 +334,37 @@ impl Converters {
                 let text = value.to_string().map_err(|err| message(&err))?;
                 Ok(truncate(&text))
             }
-            other => Err(format!(
-                "decode must return a string or a number, got {}",
-                other.type_name()
-            )),
+            other => Err(msg!("decode_type", got = other.type_name())),
         }
     }
 
     /// Registradores a escrever a partir do texto digitado; conferidos aqui (quantidade e faixa).
-    pub fn encode(&self, id: &str, text: &str) -> Result<Vec<u16>, String> {
+    pub fn encode(&self, id: &str, text: &str) -> Result<Vec<u16>, Msg> {
         let item = self.item(id)?;
         let Some(encode) = &item.encode else {
-            return Err(format!("{} is read-only", item.info.name));
+            return Err(msg!("read_only", name = &item.info.name));
         };
         if text.chars().count() > MAX_TEXT {
-            return Err(format!("text longer than {MAX_TEXT} characters"));
+            return Err(msg!("text_length", max = MAX_TEXT));
         }
         self.reset_budget();
         let value: Value = encode.call(text).map_err(|err| message(&err))?;
         let Value::Table(table) = value else {
-            return Err("encode must return a table of registers".into());
+            return Err(msg!("encode_table"));
         };
         let regs: Vec<i64> = table
             .sequence_values::<i64>()
             .collect::<mlua::Result<_>>()
-            .map_err(|_| "encode must return integers".to_string())?;
+            .map_err(|_| msg!("encode_integers"))?;
         if regs.len() != item.info.registers {
-            return Err(format!(
-                "encode returned {} register(s), expected {}",
-                regs.len(),
-                item.info.registers
+            return Err(msg!(
+                "encode_count",
+                got = regs.len(),
+                expected = item.info.registers
             ));
         }
         regs.into_iter()
-            .map(|r| {
-                u16::try_from(r).map_err(|_| format!("register value {r} is outside 0..65535"))
-            })
+            .map(|r| u16::try_from(r).map_err(|_| msg!("register_range", value = r)))
             .collect()
     }
 }
@@ -426,17 +426,17 @@ mod tests {
                 writable: false
             }]
         );
-        let errors: Vec<(&str, &str)> = c
+        let errors: Vec<(&str, String)> = c
             .errors()
             .iter()
-            .map(|e| (e.file.as_str(), e.message.as_str()))
+            .map(|e| (e.file.as_str(), e.message.to_string()))
             .collect();
         assert_eq!(errors.len(), 4, "{errors:?}");
         assert!(
             errors[0].0 == "b_syntax.lua" && errors[0].1.contains("b_syntax.lua:3:"),
             "{errors:?}"
         );
-        assert!(errors[1].0 == "bad name.lua" && errors[1].1.contains("invalid file name"));
+        assert!(errors[1].0 == "bad name.lua" && errors[1].1.contains("Invalid converter name"));
         assert!(errors[2].1.contains("decode"));
         assert!(errors[3].1.contains("1 to 125"));
         fs::remove_dir_all(dir).unwrap();
@@ -493,11 +493,12 @@ mod tests {
         assert!(
             c.decode("loop", &[0])
                 .unwrap_err()
-                .contains("instruction limit")
+                .code
+                .contains("instructions")
         );
-        assert!(c.decode("mem", &[0]).unwrap_err().contains("memory"));
+        assert!(c.decode("mem", &[0]).unwrap_err().code.contains("memory"));
         assert_eq!(c.decode("ok", &[21]).unwrap(), "42"); // a VM segue usável
-        assert!(c.errors()[0].message.contains("instruction limit"));
+        assert!(c.errors()[0].message.code.contains("instructions"));
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -516,10 +517,25 @@ mod tests {
             ),
         ]);
         assert_eq!(c.decode("f", &[0]).unwrap(), "1.5");
-        assert!(c.decode("n", &[0]).unwrap_err().contains("got nil"));
+        assert!(
+            c.decode("n", &[0])
+                .unwrap_err()
+                .to_string()
+                .contains("got nil")
+        );
         assert_eq!(c.decode("long", &[0]).unwrap().len(), MAX_TEXT);
-        assert!(c.decode("two", &[1]).unwrap_err().contains("needs 2"));
-        assert!(c.decode("missing", &[1]).unwrap_err().contains("not found"));
+        assert!(
+            c.decode("two", &[1])
+                .unwrap_err()
+                .to_string()
+                .contains("needs 2")
+        );
+        assert!(
+            c.decode("missing", &[1])
+                .unwrap_err()
+                .to_string()
+                .contains("not found")
+        );
         fs::remove_dir_all(dir).unwrap();
     }
 
@@ -547,11 +563,34 @@ mod tests {
                 "return { name = 'RO', decode = function() return 0 end }",
             ),
         ]);
-        assert!(c.encode("count", "1").unwrap_err().contains("expected 2"));
-        assert!(c.encode("range", "1").unwrap_err().contains("70000"));
-        assert!(c.encode("frac", "1").unwrap_err().contains("integers"));
-        assert!(c.encode("err", "1").unwrap_err().contains("bad input"));
-        assert_eq!(c.encode("ro", "1").unwrap_err(), "RO is read-only");
+        assert!(
+            c.encode("count", "1")
+                .unwrap_err()
+                .to_string()
+                .contains("expected 2")
+        );
+        assert!(
+            c.encode("range", "1")
+                .unwrap_err()
+                .to_string()
+                .contains("70000")
+        );
+        assert!(
+            c.encode("frac", "1")
+                .unwrap_err()
+                .to_string()
+                .contains("integers")
+        );
+        assert!(
+            c.encode("err", "1")
+                .unwrap_err()
+                .to_string()
+                .contains("bad input")
+        );
+        assert_eq!(
+            c.encode("ro", "1").unwrap_err().to_string(),
+            "RO is read-only"
+        );
         fs::remove_dir_all(dir).unwrap();
     }
 

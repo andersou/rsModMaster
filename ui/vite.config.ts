@@ -13,5 +13,6 @@ export default defineConfig({
   server: { port: 5173, strictPort: true },
   // WKWebView (macOS), WebView2 e WebKitGTK recentes: nada de transpilar para navegadores antigos
   build: { target: 'safari16', outDir: 'dist', emptyOutDir: true },
-  test: { environment: 'node', include: ['src/**/*.test.ts'] },
+  // os testes conferem os textos em inglês, qualquer que seja o idioma da máquina
+  test: { environment: 'node', include: ['src/**/*.test.ts'], setupFiles: ['src/test-setup.ts'] },
 });

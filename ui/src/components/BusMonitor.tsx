@@ -1,6 +1,7 @@
 import { createEffect, createSignal, For, on, onMount, Show } from 'solid-js';
 import { api } from '../api';
 import { app, type RawLine } from '../appStore';
+import { errorText, t, tk } from '../i18n';
 import { localIso } from '../lib/time';
 import { toast } from '../toasts';
 import { Icon } from './Icon';
@@ -13,24 +14,24 @@ export function BusTools() {
   const save = async () => {
     const text = app.raw().map(lineText).join('\n');
     try {
-      const path = await api.saveText(text ? `${text}\n` : '', 'bus-monitor.txt', 'Save Bus Monitor Raw Data');
-      if (path) toast(`Saved to ${path}`);
+      const path = await api.saveText(text ? `${text}\n` : '', 'bus-monitor.txt', t('bus.saveTitle'), t('store.textFilter'));
+      if (path) toast(t('bus.saved', { path }));
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     }
   };
   return (
     <>
-      <span class="context">last {app.raw().length} frames</span>
+      <span class="context">{t('bus.count', { n: app.raw().length })}</span>
       <span class="log-sep" />
-      <button class="btn ghost small square" type="button" title="Save the frames…" aria-label="Save the frames" disabled={!app.raw().length} onClick={save}>
+      <button class="btn ghost small square" type="button" title={t('bus.save')} aria-label={t('bus.saveLabel')} disabled={!app.raw().length} onClick={save}>
         <Icon name="download" />
       </button>
       <button
         class="btn ghost small square"
         type="button"
-        title="Clear the frames"
-        aria-label="Clear the frames"
+        title={t('bus.clear')}
+        aria-label={t('bus.clear')}
         disabled={!app.raw().length}
         onClick={() => {
           app.clearRaw();
@@ -56,12 +57,15 @@ export function BusView() {
   );
   const detail = () => {
     const line = selected();
-    return line ? `Type: ${line.type}\nTimestamp: ${localIso(line.at)}\nMode: ${line.mode}\n${line.detail}` : 'Select a raw line to decode ADU/PDU fields.';
+    if (!line) return t('bus.select');
+    const fields: [string, string][] = [[t('bus.type'), line.type], [t('bus.timestamp'), localIso(line.at)], [t('bus.mode'), line.mode]];
+    for (const [key, value] of line.fields) fields.push([tk(`bus.fields.${key}`) ?? key, value]);
+    return fields.map(([label, value]) => `${label}: ${value}`).join('\n');
   };
   return (
     <div class="bus-body">
       <div class="log-box">
-        <div class="log-list" ref={list} role="listbox" aria-label="Raw frames">
+        <div class="log-list" ref={list} role="listbox" aria-label={t('bus.list')}>
           <For each={app.raw()}>
             {(line) => (
               <div
@@ -81,8 +85,8 @@ export function BusView() {
         <Show when={!app.raw().length}>
           <div class="log-empty">
             <Icon name="activity" />
-            <span class="log-empty-title">No frames yet</span>
-            <span class="log-empty-text">Read, write or scan to see the raw Tx/Rx frames here.</span>
+            <span class="log-empty-title">{t('bus.emptyTitle')}</span>
+            <span class="log-empty-text">{t('bus.emptyText')}</span>
           </div>
         </Show>
       </div>

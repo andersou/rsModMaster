@@ -62,6 +62,7 @@ fn every_function_round_trips_against_a_real_slave() {
         values: vec![],
     };
     let out = m.transaction(&bad).unwrap();
-    assert!(out.error.unwrap().starts_with("Modbus exception 2"));
+    let err = out.error.unwrap();
+    assert_eq!((err.code, err.args["code"].as_str()), ("exception", "2"));
     assert_eq!((out.packets, out.errors), (12, 1));
 }

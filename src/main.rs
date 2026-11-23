@@ -13,8 +13,9 @@ use std::{
 };
 
 use modmaster_core::{
-    Event, Master, Outcome, Request, Rtu, Settings, Tcp,
+    Event, Master, Msg, Outcome, Ping, Request, Rtu, Settings, SlaveId, Tcp,
     convert::{self, Converters, Info, LoadError},
+    msg,
 };
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewWindow, async_runtime::spawn_blocking};
@@ -29,16 +30,21 @@ type Shared = Arc<Master>;
 type SharedConverters = Arc<Mutex<Converters>>;
 
 /// Roda o que bloqueia (E/S serial e TCP, até o timeout) fora da thread da janela.
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, String> {
-    spawn_blocking(f).await.map_err(|err| err.to_string())
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> Result<T, Msg> {
+    spawn_blocking(f)
+        .await
+        .map_err(|err| msg!("other", text = err))
 }
 
 /// O INI fica na pasta de configuração do app. Na primeira vez, se houver um `fModMaster.ini` na
 /// pasta atual ou ao lado do executável (onde o fModMaster e o qModMaster o deixavam), ele é
 /// copiado para lá.
-fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_config_dir().map_err(|err| err.to_string())?;
-    fs::create_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
+fn settings_path(app: &AppHandle) -> Result<PathBuf, Msg> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|err| msg!("other", text = err))?;
+    fs::create_dir_all(&dir).map_err(|err| msg!("io", path = dir.display(), err = err))?;
     let path = dir.join(INI);
     if !path.exists() {
         let exe_dir = std::env::current_exe()
@@ -60,7 +66,7 @@ fn settings_path(app: &AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-fn load_settings(app: AppHandle) -> Result<Settings, String> {
+fn load_settings(app: AppHandle) -> Result<Settings, Msg> {
     let path = settings_path(&app)?;
     // INI ilegível: segue com os padrões, como o fModMaster
     Ok(Settings::load(&path).unwrap_or_else(|err| {
@@ -70,45 +76,51 @@ fn load_settings(app: AppHandle) -> Result<Settings, String> {
 }
 
 #[tauri::command]
-fn save_settings(app: AppHandle, settings: Settings) -> Result<(), String> {
+fn save_settings(app: AppHandle, settings: Settings) -> Result<(), Msg> {
     let path = settings_path(&app)?;
-    settings
-        .save(&path)
-        .map_err(|err| format!("Could not save {}: {err}", path.display()))
+    settings.save(&path).map_err(|err| save_failed(&path, err))
 }
 
-/// Sessão: o caminho vem do diálogo nativo, nunca da webview.
+fn save_failed(path: &Path, err: impl std::fmt::Display) -> Msg {
+    msg!("save_failed", path = path.display(), err = err)
+}
+
+/// Sessão: o caminho vem do diálogo nativo, nunca da webview (dela vêm só os textos traduzidos).
 #[tauri::command]
-async fn load_session(window: WebviewWindow) -> Result<Option<Settings>, String> {
+async fn load_session(
+    window: WebviewWindow,
+    title: String,
+    filter: String,
+) -> Result<Option<Settings>, Msg> {
     let Some(path) = window
         .dialog()
         .file()
         .set_parent(&window)
-        .set_title("Load Session")
-        .add_filter("Session", &["fmmsess", "ses", "ini"])
+        .set_title(title)
+        .add_filter(filter, &["fmmsess", "ses", "ini"])
         .blocking_pick_file()
     else {
         return Ok(None);
     };
-    let path = path.into_path().map_err(|err| err.to_string())?;
+    let path = path.into_path().map_err(|err| msg!("other", text = err))?;
     Settings::load(&path)
         .map(Some)
-        .map_err(|err| format!("Could not read {}: {err}", path.display()))
+        .map_err(|err| msg!("read_failed", path = path.display(), err = err))
 }
 
 #[tauri::command]
-async fn save_session(window: WebviewWindow, settings: Settings) -> Result<Option<String>, String> {
-    let Some(path) = save_dialog(
-        &window,
-        "Save Session",
-        "session.fmmsess",
-        ("Session", "fmmsess"),
-    ) else {
+async fn save_session(
+    window: WebviewWindow,
+    settings: Settings,
+    title: String,
+    filter: String,
+) -> Result<Option<String>, Msg> {
+    let Some(path) = save_dialog(&window, &title, "session.fmmsess", (&filter, "fmmsess")) else {
         return Ok(None);
     };
     settings
         .save(&path)
-        .map_err(|err| format!("Could not save {}: {err}", path.display()))?;
+        .map_err(|err| save_failed(&path, err))?;
     Ok(Some(path.display().to_string()))
 }
 
@@ -119,11 +131,12 @@ async fn save_text(
     text: String,
     name: String,
     title: String,
-) -> Result<Option<String>, String> {
-    let Some(path) = save_dialog(&window, &title, &name, ("Text", "txt")) else {
+    filter: String,
+) -> Result<Option<String>, Msg> {
+    let Some(path) = save_dialog(&window, &title, &name, (&filter, "txt")) else {
         return Ok(None);
     };
-    fs::write(&path, text).map_err(|err| format!("Could not save {}: {err}", path.display()))?;
+    fs::write(&path, text).map_err(|err| save_failed(&path, err))?;
     Ok(Some(path.display().to_string()))
 }
 
@@ -152,7 +165,7 @@ fn serial_ports() -> Vec<String> {
 }
 
 #[tauri::command]
-async fn connect_rtu(master: State<'_, Shared>, cfg: Rtu) -> Result<(), String> {
+async fn connect_rtu(master: State<'_, Shared>, cfg: Rtu) -> Result<(), Msg> {
     let master = master.inner().clone();
     blocking(move || master.connect_rtu(&cfg))
         .await?
@@ -160,7 +173,7 @@ async fn connect_rtu(master: State<'_, Shared>, cfg: Rtu) -> Result<(), String> 
 }
 
 #[tauri::command]
-async fn connect_tcp(master: State<'_, Shared>, cfg: Tcp) -> Result<(), String> {
+async fn connect_tcp(master: State<'_, Shared>, cfg: Tcp) -> Result<(), Msg> {
     let master = master.inner().clone();
     blocking(move || master.connect_tcp(&cfg))
         .await?
@@ -168,63 +181,67 @@ async fn connect_tcp(master: State<'_, Shared>, cfg: Tcp) -> Result<(), String> 
 }
 
 #[tauri::command]
-async fn disconnect(master: State<'_, Shared>) -> Result<(), String> {
+async fn disconnect(master: State<'_, Shared>) -> Result<(), Msg> {
     let master = master.inner().clone();
     blocking(move || master.disconnect()).await
 }
 
 #[tauri::command]
-async fn transaction(master: State<'_, Shared>, req: Request) -> Result<Outcome, String> {
+async fn transaction(master: State<'_, Shared>, req: Request) -> Result<Outcome, Msg> {
     let master = master.inner().clone();
     blocking(move || master.transaction(&req)).await?
 }
 
 #[tauri::command]
-async fn start_scan(master: State<'_, Shared>, req: Request, rate_ms: u64) -> Result<(), String> {
+async fn start_scan(master: State<'_, Shared>, req: Request, rate_ms: u64) -> Result<(), Msg> {
     let master = master.inner().clone();
     blocking(move || master.start_scan(req, Duration::from_millis(rate_ms.max(1)))).await?
 }
 
 #[tauri::command]
-async fn stop_scan(master: State<'_, Shared>) -> Result<(), String> {
+async fn stop_scan(master: State<'_, Shared>) -> Result<(), Msg> {
     let master = master.inner().clone();
     blocking(move || master.stop_scan()).await
 }
 
 /// Espera o lock do link (uma transação em curso, até o timeout): fora da thread da janela.
 #[tauri::command]
-async fn reset_counters(master: State<'_, Shared>) -> Result<(), String> {
+async fn reset_counters(master: State<'_, Shared>) -> Result<(), Msg> {
     let master = master.inner().clone();
     blocking(move || master.reset_counters()).await
 }
 
 #[tauri::command]
-async fn report_slave_id(master: State<'_, Shared>, slave: u8) -> Result<String, String> {
+async fn report_slave_id(master: State<'_, Shared>, slave: u8) -> Result<SlaveId, Msg> {
     let master = master.inner().clone();
-    blocking(move || master.report_slave_id(slave)).await
+    blocking(move || master.report_slave_id(slave)).await?
 }
 
 #[tauri::command]
-async fn ping(ip: String) -> Result<String, String> {
-    blocking(move || modmaster_core::ping(&ip)).await
+async fn ping(ip: String) -> Result<Ping, Msg> {
+    blocking(move || modmaster_core::ping(&ip)).await?
 }
 
 #[tauri::command]
-async fn port_status(ip: String, port: String) -> Result<String, String> {
-    blocking(move || modmaster_core::port_status(&ip, &port)).await
+async fn port_status(ip: String, port: String) -> Result<String, Msg> {
+    blocking(move || modmaster_core::port_status(&ip, &port)).await?
 }
 
 /// Abre o arquivo de log no programa padrão do sistema.
 #[tauri::command]
-fn open_log(app: AppHandle) -> Result<(), String> {
+fn open_log(app: AppHandle) -> Result<(), Msg> {
     let path = app
         .path()
         .app_log_dir()
-        .map_err(|err| err.to_string())?
+        .map_err(|err| msg!("other", text = err))?
         .join(format!("{LOG}.log"));
+    open(&app, &path)
+}
+
+fn open(app: &AppHandle, path: &Path) -> Result<(), Msg> {
     app.opener()
         .open_path(path.display().to_string(), None::<&str>)
-        .map_err(|err| format!("Could not open log file {}: {err}", path.display()))
+        .map_err(|err| msg!("open_failed", path = path.display(), err = err))
 }
 
 /// Pasta dos converters, lida em tempo de execução e editável sem recompilar, como os plugins do
@@ -274,7 +291,7 @@ fn catalog(dir: &Path, converters: &Converters) -> Catalog {
 
 /// Lista os converters; com `reload`, relê a pasta antes (botão Reload e depois de salvar).
 #[tauri::command]
-async fn converters(state: State<'_, SharedConverters>, reload: bool) -> Result<Catalog, String> {
+async fn converters(state: State<'_, SharedConverters>, reload: bool) -> Result<Catalog, Msg> {
     let dir = converters_dir();
     let state = state.inner().clone();
     blocking(move || {
@@ -305,10 +322,10 @@ struct Converted<T> {
     #[serde(skip_serializing_if = "Option::is_none")]
     value: Option<T>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    error: Option<String>,
+    error: Option<Msg>,
 }
 
-fn converted<T>(result: Result<T, String>) -> Converted<T> {
+fn converted<T>(result: Result<T, Msg>) -> Converted<T> {
     match result {
         Ok(value) => Converted {
             value: Some(value),
@@ -327,9 +344,9 @@ const MAX_ITEMS: usize = 125;
 async fn convert_decode(
     state: State<'_, SharedConverters>,
     items: Vec<DecodeItem>,
-) -> Result<Vec<Converted<String>>, String> {
+) -> Result<Vec<Converted<String>>, Msg> {
     if items.len() > MAX_ITEMS {
-        return Err(format!("at most {MAX_ITEMS} converters per call"));
+        return Err(msg!("too_many_items", max = MAX_ITEMS));
     }
     let state = state.inner().clone();
     blocking(move || {
@@ -346,9 +363,9 @@ async fn convert_decode(
 async fn convert_encode(
     state: State<'_, SharedConverters>,
     items: Vec<EncodeItem>,
-) -> Result<Vec<Converted<Vec<u16>>>, String> {
+) -> Result<Vec<Converted<Vec<u16>>>, Msg> {
     if items.len() > MAX_ITEMS {
-        return Err(format!("at most {MAX_ITEMS} converters per call"));
+        return Err(msg!("too_many_items", max = MAX_ITEMS));
     }
     let state = state.inner().clone();
     blocking(move || {
@@ -363,7 +380,7 @@ async fn convert_encode(
 
 /// Código de um converter, para o editor embutido (só ids válidos: nunca um caminho da webview).
 #[tauri::command]
-fn converter_source(id: String) -> Result<String, String> {
+fn converter_source(id: String) -> Result<String, Msg> {
     convert::source(&converters_dir(), &id)
 }
 
@@ -373,7 +390,7 @@ async fn save_converter(
     state: State<'_, SharedConverters>,
     id: String,
     source: String,
-) -> Result<Catalog, String> {
+) -> Result<Catalog, Msg> {
     let dir = converters_dir();
     let state = state.inner().clone();
     blocking(move || {
@@ -386,10 +403,7 @@ async fn save_converter(
 }
 
 #[tauri::command]
-async fn delete_converter(
-    state: State<'_, SharedConverters>,
-    id: String,
-) -> Result<Catalog, String> {
+async fn delete_converter(state: State<'_, SharedConverters>, id: String) -> Result<Catalog, Msg> {
     let dir = converters_dir();
     let state = state.inner().clone();
     blocking(move || {
@@ -402,12 +416,10 @@ async fn delete_converter(
 }
 
 #[tauri::command]
-fn open_converters_dir(app: AppHandle) -> Result<(), String> {
+fn open_converters_dir(app: AppHandle) -> Result<(), Msg> {
     let dir = converters_dir();
-    fs::create_dir_all(&dir).map_err(|err| format!("{}: {err}", dir.display()))?;
-    app.opener()
-        .open_path(dir.display().to_string(), None::<&str>)
-        .map_err(|err| format!("Could not open {}: {err}", dir.display()))
+    fs::create_dir_all(&dir).map_err(|err| msg!("io", path = dir.display(), err = err))?;
+    open(&app, &dir)
 }
 
 /// Leva os eventos do core à webview. O que já estiver na fila vai num único `emit`: no scan, os

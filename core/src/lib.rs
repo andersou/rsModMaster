@@ -5,6 +5,7 @@
 pub mod convert;
 pub mod frame;
 pub mod master;
+pub mod msg;
 pub mod settings;
 
 use std::{
@@ -13,7 +14,10 @@ use std::{
     time::Duration,
 };
 
-pub use master::{Event, Master, Outcome, Request, Rtu, Tcp};
+use serde::Serialize;
+
+pub use master::{Event, Master, Outcome, Request, Rtu, SlaveId, Tcp};
+pub use msg::Msg;
 pub use settings::Settings;
 
 const TOOL_TIMEOUT: Duration = Duration::from_secs(5);
@@ -32,11 +36,17 @@ pub fn strip_ip(ip: &str) -> Option<Ipv4Addr> {
     Some(Ipv4Addr::new(a, b, c, d))
 }
 
+/// Resultado do ping: o alvo, se respondeu e a saída do programa do sistema (no idioma dele).
+#[derive(Debug, Clone, Serialize)]
+pub struct Ping {
+    pub target: String,
+    pub success: bool,
+    pub output: String,
+}
+
 /// Um ping pelo programa do sistema, com a saída dele.
-pub fn ping(ip: &str) -> String {
-    let Some(target) = strip_ip(ip) else {
-        return format!("Ping {ip}: invalid IP address");
-    };
+pub fn ping(ip: &str) -> Result<Ping, Msg> {
+    let target = strip_ip(ip).ok_or_else(|| msg!("invalid_ip", ip = ip))?;
     let target = target.to_string();
     // espera de 5 s: no Windows e no macOS em ms, no Linux em s
     let args: [&str; 4] = if cfg!(windows) {
@@ -53,40 +63,34 @@ pub fn ping(ip: &str) -> String {
         use std::os::windows::process::CommandExt;
         command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW: sem console piscando
     }
-    match command.output() {
-        Ok(out) => {
-            let status = if out.status.success() {
-                "success"
-            } else {
-                "error"
-            };
-            let text: Vec<String> = [out.stdout, out.stderr]
-                .iter()
-                .map(|b| String::from_utf8_lossy(b).trim().to_owned())
-                .filter(|t| !t.is_empty())
-                .collect();
-            if text.is_empty() {
-                format!("Ping {target}: {status} ({})", out.status)
-            } else {
-                format!("Ping {target}: {status}\n{}", text.join("\n"))
-            }
-        }
-        Err(err) => format!("Ping {target}: error: {err}"),
-    }
+    let out = command.output().map_err(|err| msg!("other", text = err))?;
+    let text: Vec<String> = [out.stdout, out.stderr]
+        .iter()
+        .map(|b| String::from_utf8_lossy(b).trim().to_owned())
+        .filter(|t| !t.is_empty())
+        .collect();
+    Ok(Ping {
+        target,
+        success: out.status.success(),
+        output: if text.is_empty() {
+            out.status.to_string()
+        } else {
+            text.join("\n")
+        },
+    })
 }
 
-/// Se a porta TCP aceita conexão (5 s no máximo).
-pub fn port_status(ip: &str, port: &str) -> String {
-    let Some(target) = strip_ip(ip) else {
-        return format!("Port Status {ip}:{port}: closed (invalid IP address)");
-    };
-    let Ok(port) = port.trim().parse::<u16>() else {
-        return format!("Port Status {target}:{port}: closed (invalid port)");
-    };
-    match TcpStream::connect_timeout(&SocketAddr::new(target.into(), port), TOOL_TIMEOUT) {
-        Ok(_) => format!("Port Status {target}:{port}: open"),
-        Err(err) => format!("Port Status {target}:{port}: closed ({err})"),
-    }
+/// Se a porta TCP aceita conexão (5 s no máximo): `Ok("ip:porta")` se aceitou.
+pub fn port_status(ip: &str, port: &str) -> Result<String, Msg> {
+    let target = strip_ip(ip).ok_or_else(|| msg!("invalid_ip", ip = ip))?;
+    let port: u16 = port
+        .trim()
+        .parse()
+        .map_err(|_| msg!("invalid_port", port = port))?;
+    let addr = SocketAddr::new(target.into(), port);
+    TcpStream::connect_timeout(&addr, TOOL_TIMEOUT)
+        .map(|_| addr.to_string())
+        .map_err(|err| msg!("port_closed", target = addr, err = err))
 }
 
 /// Portas seriais do sistema, pelo nome.
@@ -117,10 +121,16 @@ mod tests {
         let port = listener.local_addr().unwrap().port().to_string();
         assert_eq!(
             port_status("127.0.0.1", &port),
-            format!("Port Status 127.0.0.1:{port}: open")
+            Ok(format!("127.0.0.1:{port}"))
         );
         drop(listener);
-        assert!(port_status("127.0.0.1", &port).contains(": closed ("));
-        assert!(port_status("127.0.0.1", "x").ends_with("closed (invalid port)"));
+        assert_eq!(
+            port_status("127.0.0.1", &port).unwrap_err().code,
+            "port_closed"
+        );
+        assert_eq!(
+            port_status("127.0.0.1", "x").unwrap_err().code,
+            "invalid_port"
+        );
     }
 }

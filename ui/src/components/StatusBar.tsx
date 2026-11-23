@@ -1,4 +1,5 @@
 import { app } from '../appStore';
+import { t } from '../i18n';
 import { logs } from '../logStore';
 import { panel } from '../panel';
 import { Icon } from './Icon';
@@ -8,11 +9,11 @@ export function StatusBar() {
   return (
     <footer class="statusbar">
       <span class="status" classList={{ success: app.connected() !== null, danger: app.connected() === null }}>
-        {app.connected() ? `Connected (${app.connected()})${app.scanning() ? ' · scanning' : ''}` : 'Disconnected'}
+        {app.connected() ? t('status.connected', { target: app.connected()! }) + (app.scanning() ? t('status.scanning') : '') : t('status.disconnected')}
       </span>
-      <span>Base Addr: {app.settings.baseAddr}</span>
-      <span>Packets: {app.counters().packets}</span>
-      <span classList={{ 'has-errors': app.counters().errors > 0 }}>Errors: {app.counters().errors}</span>
+      <span>{t('status.baseAddr', { value: app.settings.baseAddr })}</span>
+      <span>{t('status.packets', { n: app.counters().packets })}</span>
+      <span classList={{ 'has-errors': app.counters().errors > 0 }}>{t('status.errors', { n: app.counters().errors })}</span>
       <span class="spacer" />
       <button
         class="btn ghost small log-toggle"
@@ -22,23 +23,23 @@ export function StatusBar() {
         onClick={() => panel.toggle('bus')}
       >
         <Icon name="activity" />
-        Bus
+        {t('status.bus')}
       </button>
       <button
         class="btn ghost small log-toggle"
         classList={{ active: panel.tab() === 'log' }}
         type="button"
         aria-pressed={panel.tab() === 'log'}
-        aria-label={`Log${logs.unseen() ? ` (${logs.unseen()} new errors)` : ''}`}
+        aria-label={logs.unseen() ? t('status.logUnseen', { n: logs.unseen() }) : t('status.log')}
         onClick={() => panel.toggle('log')}
       >
         <Icon name="square-terminal" />
-        Log
+        {t('status.log')}
         {logs.unseen() > 0 && <span class="badge">{logs.unseen()}</span>}
       </button>
       <button class="btn ghost small" type="button" onClick={app.resetCounters}>
         <Icon name="rotate-ccw" />
-        Reset Counters
+        {t('status.resetCounters')}
       </button>
     </footer>
   );

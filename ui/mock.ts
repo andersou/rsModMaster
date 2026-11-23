@@ -55,8 +55,8 @@ return {
   if (cmd === 'transaction') {
     const at = t0 + (packets + 1) * 300;
     await emit('core', [
-      { kind: 'raw', tx: true, at, mode: 'TCP', hex: '00010000000601030000000C', detail: 'Transaction ID: 1\nFunction Code: 0x03\nStart Address: 0\nQuantity: 12' },
-      { kind: 'raw', tx: false, at: at + 2, mode: 'TCP', hex: '00010000001B0103180000000100020003', detail: 'Transaction ID: 1\nFunction Code: 0x03\nByte Count: 24' },
+      { kind: 'raw', tx: true, at, mode: 'TCP', hex: '00010000000601030000000C', fields: [['transaction', '1'], ['function', '0x03'], ['start', '0'], ['quantity', '12']] },
+      { kind: 'raw', tx: false, at: at + 2, mode: 'TCP', hex: '00010000001B0103180000000100020003', fields: [['transaction', '1'], ['function', '0x03'], ['byteCount', '24']] },
     ]);
     const k = ++packets;
     if (k === 30) await emit('log://log', { level: 4, message: 'Slow response from slave 1 (980 ms)' });

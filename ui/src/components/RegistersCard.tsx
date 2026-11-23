@@ -1,5 +1,6 @@
 import { createSignal, For, Index, onCleanup, onMount, Show } from 'solid-js';
 import { app } from '../appStore';
+import { t } from '../i18n';
 import { BASE_LABELS, type Base, type Cell, ENDIAN_LABELS, toEndian, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
 import { shortcut } from '../platform';
 import { ChartView } from './ChartView';
@@ -21,15 +22,15 @@ interface Menu {
 const defaultLabel = () => {
   const [kind, arg] = app.defaultFormat().split(':');
   if (kind === 'conv') return app.catalog().converters.find((c) => c.id === arg)?.name ?? arg;
-  if (kind === 'float') return `Float ${ENDIAN_LABELS[Number(arg)]}`;
+  if (kind === 'float') return t('request.float', { order: ENDIAN_LABELS[Number(arg)] });
   return BASE_LABELS[kind as Base];
 };
 
-const MENU_ITEMS: { label: string; base: Base; endian?: Endian }[] = [
-  { label: 'Dec', base: 'dec' },
-  { label: 'Bin', base: 'bin' },
-  { label: 'Hex', base: 'hex' },
-  ...ENDIAN_LABELS.map((label, i) => ({ label: `Float ${label}`, base: 'float' as Base, endian: i as Endian })),
+const MENU_ITEMS: { label: () => string; base: Base; endian?: Endian }[] = [
+  { label: () => 'Dec', base: 'dec' },
+  { label: () => 'Bin', base: 'bin' },
+  { label: () => 'Hex', base: 'hex' },
+  ...ENDIAN_LABELS.map((order, i) => ({ label: () => t('request.float', { order }), base: 'float' as Base, endian: i as Endian })),
 ];
 
 /** Formato de um endereço pelo botão direito, como o menu de contexto do fModMaster; o formato em
@@ -58,22 +59,22 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
   const floatBlocked = () => app.singleRegisterWrite();
   const state = () => {
     const c = current();
-    if (c.floatOwner !== null) return `Second half of the float at ${c.floatOwner}`;
-    if (c.converter !== null) return `${app.catalog().converters.find((x) => x.id === c.converter)?.name ?? c.converter} · converter`;
-    const name = MENU_ITEMS.find(checked)?.label ?? BASE_LABELS[c.base];
-    return `${name} · ${c.custom ? 'custom' : 'table default'}`;
+    if (c.floatOwner !== null) return t('menu.secondHalf', { owner: c.floatOwner });
+    if (c.converter !== null) return t('menu.converterState', { name: app.catalog().converters.find((x) => x.id === c.converter)?.name ?? c.converter });
+    const name = MENU_ITEMS.find(checked)?.label() ?? BASE_LABELS[c.base];
+    return t(c.custom ? 'menu.custom' : 'menu.tableDefault', { name });
   };
   return (
     <div
       ref={ref}
       class="menu"
       role="menu"
-      aria-label={`Format of register ${props.menu.address}: ${state()}`}
+      aria-label={t('menu.formatOf', { address: props.menu.address, state: state() })}
       style={{ left: `${Math.min(props.menu.x, innerWidth - 240)}px`, top: `${Math.max(8, Math.min(props.menu.y, innerHeight - 440))}px` }}
     >
       <div class="menu-title">
         <span class="menu-register">
-          Register {props.menu.address} · 0x{props.menu.address.toString(16).toUpperCase().padStart(4, '0')}
+          {t('menu.register', { address: props.menu.address, hex: props.menu.address.toString(16).toUpperCase().padStart(4, '0') })}
         </span>
         {/* o formato atual já vem marcado na lista; só a 2ª metade de float não tem o que marcar */}
         <Show when={current().floatOwner !== null}>
@@ -83,8 +84,8 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
       {/* nome do registrador: tooltip, legenda do gráfico */}
       <span class="input small menu-label">
         <input
-          aria-label={`Label of register ${props.menu.address}`}
-          placeholder="Label"
+          aria-label={t('menu.labelOf', { address: props.menu.address })}
+          placeholder={t('menu.label')}
           maxLength={32}
           spellcheck={false}
           autocomplete="off"
@@ -103,14 +104,14 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
         aria-checked={app.charted().has(props.menu.address)}
         type="button"
         disabled={!props.menu.owner}
-        title={props.menu.owner ? undefined : 'Part of a float or converter: chart its first register'}
+        title={props.menu.owner ? undefined : t('menu.partOf')}
         onClick={() => {
           app.toggleChart(props.menu.address);
           props.onClose();
         }}
       >
         <Icon name="check" class="menu-check" />
-        <span class="spacer">Show in chart</span>
+        <span class="spacer">{t('menu.showInChart')}</span>
         <Show when={app.charted().has(props.menu.address)}>
           <span class="menu-swatch" style={{ background: `var(--series-${(app.charted().get(props.menu.address) ?? 0) + 1})` }} />
         </Show>
@@ -125,27 +126,27 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
             aria-checked={checked(item)}
             type="button"
             disabled={app.scanning() || current().floatOwner !== null || (item.base === 'float' && floatBlocked())}
-            title={item.base === 'float' && floatBlocked() ? 'Float requires Write Multiple Registers (FC 10).' : undefined}
+            title={item.base === 'float' && floatBlocked() ? t('menu.floatNeedsFc10') : undefined}
             onClick={() => pick(item.base, item.endian)}
           >
             <Icon name="check" class="menu-check" />
-            <span class="spacer">{item.label}</span>
+            <span class="spacer">{item.label()}</span>
             <Show when={item.base === 'float' && item.endian === toEndian(app.settings.floatEndian)}>
-              <span class="menu-hint">default</span>
+              <span class="menu-hint">{t('menu.default')}</span>
             </Show>
           </button>
         )}
       </For>
       <div class="hairline" />
-      <div class="menu-section">Converters</div>
-      <For each={app.catalog().converters} fallback={<div class="menu-empty">No converters loaded</div>}>
+      <div class="menu-section">{t('menu.converters')}</div>
+      <For each={app.catalog().converters} fallback={<div class="menu-empty">{t('menu.noConverters')}</div>}>
         {(c) => (
           <button
             role="menuitemradio"
             aria-checked={current().converter === c.id}
             type="button"
             disabled={app.scanning() || current().floatOwner !== null || (c.registers > 1 && floatBlocked())}
-            title={`${c.id}.lua · ${c.registers} register${c.registers > 1 ? 's' : ''}${c.writable ? '' : ' · read-only'}`}
+            title={t('menu.converterInfo', { file: `${c.id}.lua`, n: c.registers, writable: c.writable })}
             onClick={() => {
               app.setConverter(props.menu.address, c.id);
               props.onClose();
@@ -155,7 +156,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
             <span class="spacer">{c.name}</span>
             <span class="menu-hint">
               {c.registers > 1 ? `×${c.registers}` : ''}
-              {c.writable ? '' : ' RO'}
+              {c.writable ? '' : ` ${t('menu.readOnlyShort')}`}
             </span>
           </button>
         )}
@@ -169,7 +170,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
         }}
       >
         <Icon name="braces" class="menu-check visible" />
-        Manage converters…
+        {t('menu.manage')}
       </button>
       <div class="hairline" />
       <button
@@ -182,7 +183,7 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
         }}
       >
         <span class="menu-check" />
-        Reset to default ({defaultLabel()})
+        {t('menu.reset', { name: defaultLabel() })}
       </button>
       </Show>
     </div>
@@ -246,34 +247,34 @@ export function RegistersCard() {
       <div class="card-head">
         <h2 class="section-title" id="registers-title">
           <Icon name="table" />
-          Registers
+          {t('registers.title')}
         </h2>
         <Segmented
-          label="View"
+          label={t('registers.view')}
           value={chartView() ? 'chart' : 'table'}
           disabled={write()}
           onChange={app.setView}
           options={[
-            { value: 'table', label: 'Table', title: 'Table view' },
-            { value: 'chart', label: 'Chart', title: write() ? 'Chart is for reads' : `Chart view (${shortcut('G')})` },
+            { value: 'table', label: t('registers.table'), title: t('registers.tableView') },
+            { value: 'chart', label: t('registers.chart'), title: write() ? t('registers.chartForReads') : t('registers.chartView', { key: shortcut('G') }) },
           ]}
         />
         <span class="context">
-          {app.quantity()} × {app.spec().bits ? 'coil' : 'register'} · right-click a register for format, label and chart
+          {t('registers.context', { n: app.quantity(), bits: app.spec().bits })}
         </span>
         <span class="spacer" />
         <button class="btn primary" classList={{ loading: app.busy() && !app.scanning() }} type="button" disabled={disabled()} onClick={app.readWrite}>
           <Icon name={write() ? 'pencil' : 'play'} />
-          {write() ? 'Write' : 'Read'}
+          {write() ? t('registers.write') : t('registers.read')}
         </button>
         <button class="btn outline" type="button" disabled={!app.connected() || (app.busy() && !app.scanning())} onClick={app.toggleScan}>
           <Icon name={app.scanning() ? 'square' : 'refresh-cw'} />
-          {app.scanning() ? 'Stop' : 'Scan'}
+          {app.scanning() ? t('registers.stop') : t('registers.scan')}
         </button>
         <Show when={!chartView()}>
           <button class="btn ghost" type="button" disabled={app.scanning()} onClick={app.clearTable}>
             <Icon name="eraser" />
-            Clear Table
+            {t('registers.clearTable')}
           </button>
         </Show>
       </div>

@@ -11,6 +11,7 @@
   "dependencies": {
     "@shikijs/langs": "4.6.0",
     "@shikijs/themes": "4.6.0",
+    "@solid-primitives/i18n": "2.2.1",
     "@tauri-apps/api": "2.12.4",
     "@tauri-apps/plugin-opener": "2.7.2",
     "shiki": "4.6.0",

@@ -1,7 +1,7 @@
 //! Quadros Modbus: montar o PDU de cada função, envelopar em RTU (CRC) ou TCP (MBAP), validar a
 //! resposta e descrever um quadro bruto para o bus monitor.
 
-use std::fmt::Write;
+use crate::{Msg, msg};
 
 pub const READ_COILS: u8 = 0x01;
 pub const READ_DISCRETE_INPUTS: u8 = 0x02;
@@ -22,7 +22,7 @@ const READS: [u8; 4] = [
 
 /// PDU da requisição. `values` só conta nas escritas (bobina: 0 ou diferente de 0). Os limites
 /// de quantidade são os da especificação: o escravo recusaria de qualquer jeito.
-pub fn request_pdu(fc: u8, start: u16, count: u16, values: &[u16]) -> Result<Vec<u8>, String> {
+pub fn request_pdu(fc: u8, start: u16, count: u16, values: &[u16]) -> Result<Vec<u8>, Msg> {
     let mut pdu = vec![fc];
     pdu.extend(start.to_be_bytes());
     let limit = match fc {
@@ -31,11 +31,13 @@ pub fn request_pdu(fc: u8, start: u16, count: u16, values: &[u16]) -> Result<Vec
         WRITE_MULTIPLE_COILS => 1968,
         WRITE_MULTIPLE_REGISTERS => 123,
         WRITE_SINGLE_COIL | WRITE_SINGLE_REGISTER => 1,
-        _ => return Err(format!("Unsupported function code 0x{fc:02X}")),
+        _ => return Err(msg!("unsupported_function", fc = format!("{fc:02X}"))),
     };
     if count == 0 || count > limit {
-        return Err(format!(
-            "Number of items must be 1..{limit} for function 0x{fc:02X}"
+        return Err(msg!(
+            "bad_quantity",
+            limit = limit,
+            fc = format!("{fc:02X}")
         ));
     }
     // escrita: um valor por item, nem mais nem menos (nunca completar com 0 no equipamento)
@@ -44,10 +46,7 @@ pub fn request_pdu(fc: u8, start: u16, count: u16, values: &[u16]) -> Result<Vec
         WRITE_SINGLE_COIL | WRITE_SINGLE_REGISTER | WRITE_MULTIPLE_COILS | WRITE_MULTIPLE_REGISTERS
     );
     if write && values.len() != usize::from(count) {
-        return Err(format!(
-            "Write needs {count} value(s), got {}",
-            values.len()
-        ));
+        return Err(msg!("write_values", count = count, got = values.len()));
     }
     let value = |i: usize| values[i];
     match fc {
@@ -76,12 +75,7 @@ pub fn request_pdu(fc: u8, start: u16, count: u16, values: &[u16]) -> Result<Vec
 
 /// Valores da resposta (PDU sem o endereço): bits como 0/1, registradores como u16. Numa
 /// escrita, devolve o que foi escrito, como o qModMaster mostra.
-pub fn response_values(
-    fc: u8,
-    count: u16,
-    written: &[u16],
-    pdu: &[u8],
-) -> Result<Vec<u16>, String> {
+pub fn response_values(fc: u8, count: u16, written: &[u16], pdu: &[u8]) -> Result<Vec<u16>, Msg> {
     check_exception(fc, pdu)?;
     let n = usize::from(count);
     match fc {
@@ -107,37 +101,35 @@ pub fn response_values(
             }
             Ok(values)
         }
-        _ => Err(format!("Malformed response ({} bytes)", pdu.len())),
+        _ => Err(msg!("malformed", bytes = pdu.len())),
     }
 }
 
 /// Report Slave ID (0x11), como o pymodbus lê: o identificador são todos os bytes de dados e o
 /// estado é o último (0xFF = ligado).
-pub fn slave_id(pdu: &[u8]) -> Result<(bool, Vec<u8>), String> {
+pub fn slave_id(pdu: &[u8]) -> Result<(bool, Vec<u8>), Msg> {
     check_exception(REPORT_SLAVE_ID, pdu)?;
-    let count = usize::from(*pdu.get(1).ok_or("Malformed response")?);
-    let data = pdu.get(2..2 + count).ok_or("Malformed response")?.to_vec();
+    let malformed = || msg!("malformed", bytes = pdu.len());
+    let count = usize::from(*pdu.get(1).ok_or_else(malformed)?);
+    let data = pdu.get(2..2 + count).ok_or_else(malformed)?.to_vec();
     Ok((data.last() == Some(&0xFF), data))
 }
 
-fn check_exception(fc: u8, pdu: &[u8]) -> Result<(), String> {
+fn check_exception(fc: u8, pdu: &[u8]) -> Result<(), Msg> {
     match pdu.first() {
         Some(&got) if got == fc | 0x80 => {
             let code = pdu.get(1).copied().unwrap_or(0);
-            Err(format!(
-                "Modbus exception {code} ({})",
-                exception_name(code)
-            ))
+            Err(msg!("exception", code = code, name = exception_name(code)))
         }
         Some(&got) if got == fc => Ok(()),
-        _ => Err("Response does not match the request".into()),
+        _ => Err(msg!("mismatch")),
     }
 }
 
 /// Dados de uma resposta de leitura: byte count + `len` bytes.
-fn payload(pdu: &[u8], len: usize) -> Result<&[u8], String> {
+fn payload(pdu: &[u8], len: usize) -> Result<&[u8], Msg> {
     if pdu.get(1).map(|&b| usize::from(b)) != Some(len) || pdu.len() < 2 + len {
-        return Err(format!("Malformed response ({} bytes)", pdu.len()));
+        return Err(msg!("malformed", bytes = pdu.len()));
     }
     Ok(&pdu[2..2 + len])
 }
@@ -196,30 +188,27 @@ pub fn rtu_remaining(head: &[u8]) -> Option<usize> {
     Some(total.saturating_sub(head.len()))
 }
 
-/// Campos de um quadro bruto, um por linha, para o painel ADU/PDU do bus monitor (mesmo texto
-/// do fModMaster). `tx`: quadro enviado pelo mestre.
-pub fn describe(tx: bool, tcp: bool, data: &[u8]) -> String {
-    let mut out = String::new();
+/// Campos de um quadro bruto, na ordem, para o painel ADU/PDU do bus monitor (os campos do
+/// fModMaster). A chave é estável e a UI traduz o rótulo (`bus.fields.<chave>`). `tx`: quadro
+/// enviado pelo mestre.
+pub fn describe(tx: bool, tcp: bool, data: &[u8]) -> Vec<(&'static str, String)> {
     let raw = hex(data);
     let header = if tcp { 8 } else { 4 };
     if data.len() < header {
         let mode = if tcp { "TCP" } else { "RTU" };
-        return format!("Unparseable: {mode} ADU is too short\nRaw: {raw}");
+        return vec![("unparseable", mode.into()), ("raw", raw)];
     }
+    let mut out = Vec::new();
     let (pdu, crc) = if tcp {
-        let word = |i: usize| u16::from_be_bytes([data[i], data[i + 1]]);
-        let _ = write!(
-            out,
-            "Transaction ID: {}\nProtocol ID: {}\nLength: {}\nUnit ID: {}\n",
-            word(0),
-            word(2),
-            word(4),
-            data[6]
-        );
+        let word = |i: usize| u16::from_be_bytes([data[i], data[i + 1]]).to_string();
+        out.push(("transaction", word(0)));
+        out.push(("protocol", word(2)));
+        out.push(("length", word(4)));
+        out.push(("unit", data[6].to_string()));
         (&data[7..], None)
     } else {
         let n = data.len();
-        let _ = writeln!(out, "Slave Address: {}", data[0]);
+        out.push(("slave", data[0].to_string()));
         (
             &data[1..n - 2],
             Some(u16::from_le_bytes([data[n - 2], data[n - 1]])),
@@ -228,45 +217,45 @@ pub fn describe(tx: bool, tcp: bool, data: &[u8]) -> String {
     let fc = pdu[0];
     let p = &pdu[1..];
     let word = |i: usize| u16::from_be_bytes([p[i], p[i + 1]]);
-    let _ = writeln!(out, "Function Code: 0x{fc:02X}");
+    out.push(("function", format!("0x{fc:02X}")));
     let single = matches!(fc, WRITE_SINGLE_COIL | WRITE_SINGLE_REGISTER);
     let multi = matches!(fc, WRITE_MULTIPLE_COILS | WRITE_MULTIPLE_REGISTERS);
     let read = READS.contains(&fc);
     if fc & 0x80 != 0 {
         if let Some(code) = p.first() {
-            let _ = writeln!(out, "Exception Code: {code}");
+            out.push(("exception", code.to_string()));
         }
     } else {
         if (single || multi || read && tx) && p.len() >= 4 {
-            let _ = writeln!(out, "Start Address: {}", word(0));
+            out.push(("start", word(0).to_string()));
         }
         if (multi || read && tx) && p.len() >= 4 {
-            let _ = writeln!(out, "Quantity: {}", word(2));
+            out.push(("quantity", word(2).to_string()));
         }
         let values = if single && p.len() >= 4 {
             vec![word(2)]
         } else if multi && p.len() >= 5 {
-            let _ = writeln!(out, "Byte Count: {}", p[4]);
+            out.push(("byteCount", p[4].to_string()));
             if tx {
                 words(p.get(5..5 + usize::from(p[4])).unwrap_or(&p[5..]))
             } else {
                 vec![]
             }
         } else if read && !tx && !p.is_empty() {
-            let _ = writeln!(out, "Byte Count: {}", p[0]);
+            out.push(("byteCount", p[0].to_string()));
             words(p.get(1..1 + usize::from(p[0])).unwrap_or(&p[1..]))
         } else {
             vec![]
         };
         if !values.is_empty() {
             let list: Vec<String> = values.iter().map(u16::to_string).collect();
-            let _ = writeln!(out, "Values: {}", list.join(", "));
+            out.push(("values", list.join(", ")));
         }
     }
     if let Some(crc) = crc {
-        let _ = writeln!(out, "CRC: 0x{crc:04X}");
+        out.push(("crc", format!("0x{crc:04X}")));
     }
-    let _ = write!(out, "Raw: {raw}");
+    out.push(("raw", raw));
     out
 }
 
@@ -352,7 +341,7 @@ mod tests {
             response_values(READ_INPUT_REGISTERS, 2, &[], &[4, 4, 0, 1, 0xFF, 0xFE]).unwrap();
         assert_eq!(regs, [1, 0xFFFE]);
         let err = response_values(READ_HOLDING_REGISTERS, 1, &[], &[0x83, 2]).unwrap_err();
-        assert_eq!(err, "Modbus exception 2 (illegal data address)");
+        assert_eq!(err.to_string(), "Modbus exception 2 (illegal data address)");
         // byte count errado não vira valor inventado
         assert!(response_values(READ_HOLDING_REGISTERS, 2, &[], &[3, 2, 0, 1]).is_err());
         assert!(response_values(READ_COILS, 1, &[], &[3, 1, 1]).is_err());
@@ -381,19 +370,26 @@ mod tests {
 
     #[test]
     fn describe_matches_the_fmodmaster_bus_monitor() {
-        let tx = describe(true, false, &[1, 3, 0, 0x3A, 0, 2, 0xE5, 0xC6]);
+        let text = |fields: Vec<(&str, String)>| {
+            let lines: Vec<String> = fields.iter().map(|(k, v)| format!("{k}={v}")).collect();
+            lines.join(" ")
+        };
         assert_eq!(
-            tx,
-            "Slave Address: 1\nFunction Code: 0x03\nStart Address: 58\nQuantity: 2\nCRC: 0xC6E5\nRaw: 0103003A0002E5C6"
+            text(describe(true, false, &[1, 3, 0, 0x3A, 0, 2, 0xE5, 0xC6])),
+            "slave=1 function=0x03 start=58 quantity=2 crc=0xC6E5 raw=0103003A0002E5C6"
         );
-        let rx = describe(false, true, &[0, 1, 0, 0, 0, 7, 1, 3, 4, 0, 1, 0, 2]);
         assert_eq!(
-            rx,
-            "Transaction ID: 1\nProtocol ID: 0\nLength: 7\nUnit ID: 1\nFunction Code: 0x03\nByte Count: 4\nValues: 1, 2\nRaw: 00010000000701030400010002"
+            text(describe(
+                false,
+                true,
+                &[0, 1, 0, 0, 0, 7, 1, 3, 4, 0, 1, 0, 2]
+            )),
+            "transaction=1 protocol=0 length=7 unit=1 function=0x03 byteCount=4 values=1, 2 raw=00010000000701030400010002"
         );
-        assert!(
-            describe(false, false, &[1, 0x83, 2]).starts_with("Unparseable: RTU ADU is too short")
+        assert_eq!(
+            text(describe(false, false, &[1, 0x83, 2])),
+            "unparseable=RTU raw=018302"
         );
-        assert!(describe(false, false, &[1, 0x83, 2, 0xC0, 0xF1]).contains("Exception Code: 2"));
+        assert!(text(describe(false, false, &[1, 0x83, 2, 0xC0, 0xF1])).contains("exception=2"));
     }
 }

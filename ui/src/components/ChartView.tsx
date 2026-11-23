@@ -3,6 +3,7 @@ import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 import { app } from '../appStore';
 import { laneValue, lastValue, WINDOWS, type WindowKey } from '../lib/chart';
+import { t } from '../i18n';
 import { formatFloat } from '../lib/registers';
 import { localIso } from '../lib/time';
 import { theme } from '../theme';
@@ -15,7 +16,7 @@ interface Series {
   label: string;
 }
 
-const WINDOW_OPTIONS = WINDOWS.map((w) => ({ value: w.value, label: w.label }));
+const windowOptions = () => WINDOWS.map((w) => ({ value: w.value, label: w.value === 'all' ? t('chart.all') : w.label }));
 
 /** Valores dos registradores escolhidos (botão direito → Show in chart) ao longo do tempo, com o
  *  uPlot (canvas; estilos só via CSSOM, a CSP segue estrita). Uma série por registrador, na cor
@@ -31,7 +32,7 @@ export function ChartView() {
   const [drawn, setDrawn] = createSignal(0);
   const bits = () => app.spec().bits;
   const series = createMemo<Series[]>(() =>
-    [...app.charted()].map(([address, slot]) => ({ address, slot, label: app.labels()[address] ?? `Reg ${address}` })),
+    [...app.charted()].map(([address, slot]) => ({ address, slot, label: app.labels()[address] ?? t('chart.reg', { address }) })),
   );
   const windowMs = () => WINDOWS.find((w) => w.value === app.chartWindow())?.ms ?? null;
 
@@ -169,25 +170,25 @@ export function ChartView() {
   const cursorTime = () => {
     drawn();
     const idx = cursor();
-    const t = idx !== null ? app.chart.t[idx] : undefined;
-    return t === undefined ? 'latest' : localIso(t).slice(11);
+    const time = idx !== null ? app.chart.t[idx] : undefined;
+    return time === undefined ? t('chart.latest') : localIso(time).slice(11);
   };
 
   return (
     <div class="chart-view">
       <div class="chart-toolbar">
-        <Segmented label="Time window" value={app.chartWindow()} options={WINDOW_OPTIONS} onChange={(w) => app.setChartWindow(w as WindowKey)} />
+        <Segmented label={t('chart.window')} value={app.chartWindow()} options={windowOptions()} onChange={(w) => app.setChartWindow(w as WindowKey)} />
         <Show when={!live()}>
-          <button class="btn small" type="button" title="Follow the latest samples again" onClick={goLive}>
+          <button class="btn small" type="button" title={t('chart.followLatest')} onClick={goLive}>
             <Icon name="play" />
-            Live
+            {t('chart.live')}
           </button>
         </Show>
-        <span class="context">{live() ? 'Drag on the chart to zoom' : 'Paused on a zoom · double-click shows everything'}</span>
+        <span class="context">{live() ? t('chart.dragToZoom') : t('chart.paused')}</span>
         <span class="spacer" />
         <button class="btn ghost small" type="button" onClick={app.clearChart}>
           <Icon name="eraser" />
-          Clear
+          {t('common.clear')}
         </button>
       </div>
       <div class="chart-body">
@@ -195,8 +196,8 @@ export function ChartView() {
           <Show when={!series().length}>
             <div class="log-empty">
               <Icon name="activity" />
-              <span class="log-empty-title">No registers in the chart</span>
-              <span class="log-empty-text">Right-click a register → Show in chart (up to 8). Then Read or Scan.</span>
+              <span class="log-empty-title">{t('chart.emptyTitle')}</span>
+              <span class="log-empty-text">{t('chart.emptyText')}</span>
             </div>
           </Show>
         </div>
@@ -211,14 +212,14 @@ export function ChartView() {
                       class="legend-item"
                       type="button"
                       aria-pressed={!hidden().has(s.address)}
-                      title={`${s.label} · register ${s.address} · click to ${hidden().has(s.address) ? 'show' : 'hide'}`}
+                      title={t(hidden().has(s.address) ? 'chart.legendShow' : 'chart.legendHide', { label: s.label, address: s.address })}
                       onClick={() => toggleHidden(s.address, i() + 1)}
                     >
                       <span class="menu-swatch" style={{ background: `var(--series-${s.slot + 1})` }} />
                       <span class="legend-label">{s.label}</span>
                       <span class="legend-value">{valueOf(s.address)}</span>
                     </button>
-                    <button class="btn ghost square small" type="button" aria-label={`Remove ${s.label} from the chart`} onClick={() => app.toggleChart(s.address)}>
+                    <button class="btn ghost square small" type="button" aria-label={t('chart.remove', { label: s.label })} onClick={() => app.toggleChart(s.address)}>
                       <Icon name="x" />
                     </button>
                   </li>

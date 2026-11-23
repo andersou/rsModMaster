@@ -15,7 +15,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use serialport::{DataBits, Parity, SerialPort, StopBits};
 
-use crate::frame;
+use crate::{Msg, frame, msg};
 
 /// Tempo de resposta: o qModMaster grava `TimeOut = 0`, o que não serve; menos de 1 s vira 1 s.
 pub fn timeout(ms: &str) -> Duration {
@@ -62,7 +62,7 @@ pub struct Request {
 #[serde(rename_all = "camelCase")]
 pub struct Outcome {
     pub values: Vec<u16>,
-    pub error: Option<String>,
+    pub error: Option<Msg>,
     pub packets: u64,
     pub errors: u64,
     /// Fim da transação, em ms desde 1970: o gráfico usa esta hora, não a de chegada (os eventos
@@ -79,10 +79,18 @@ pub enum Event {
         at: u64,
         mode: &'static str,
         hex: String,
-        detail: String,
+        /// campos decodificados (`frame::describe`)
+        fields: Vec<(&'static str, String)>,
     },
     /// Resultado de cada volta do scan.
     Scan(Outcome),
+}
+
+/// Resposta do Report Slave ID: o estado (último byte 0xFF = ligado) e os bytes de dados.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct SlaveId {
+    pub running: bool,
+    pub data: Vec<u8>,
 }
 
 enum Link {
@@ -132,7 +140,7 @@ impl Master {
         (master, rx)
     }
 
-    pub fn connect_rtu(&self, cfg: &Rtu) -> Result<(), String> {
+    pub fn connect_rtu(&self, cfg: &Rtu) -> Result<(), Msg> {
         self.disconnect();
         let parity = match cfg
             .parity
@@ -161,7 +169,7 @@ impl Master {
             .stop_bits(stop_bits)
             .timeout(timeout(&cfg.timeout_ms))
             .open()
-            .map_err(|err| format!("Connection failed on {}: {err}", cfg.port))?;
+            .map_err(|err| msg!("connect_serial", port = &cfg.port, err = err))?;
         let rts = cfg.rts.to_lowercase();
         if !matches!(rts.as_str(), "" | "none" | "disable") {
             let level = matches!(rts.as_str(), "enable" | "true" | "1");
@@ -175,21 +183,20 @@ impl Master {
         Ok(())
     }
 
-    pub fn connect_tcp(&self, cfg: &Tcp) -> Result<(), String> {
-        let ip = crate::strip_ip(&cfg.ip)
-            .ok_or_else(|| format!("Connection failed: invalid IP address '{}'.", cfg.ip))?;
+    pub fn connect_tcp(&self, cfg: &Tcp) -> Result<(), Msg> {
+        let ip = crate::strip_ip(&cfg.ip).ok_or_else(|| msg!("invalid_ip", ip = &cfg.ip))?;
         let port: u16 = cfg
             .port
             .trim()
             .parse()
             .ok()
             .filter(|&p| p > 0)
-            .ok_or("Connection failed: TCP port must be 1..65535.")?;
+            .ok_or_else(|| msg!("invalid_port", port = &cfg.port))?;
         self.disconnect();
         let addr = SocketAddr::new(ip.into(), port);
         let timeout = timeout(&cfg.timeout_ms);
         let stream =
-            open_tcp(addr, timeout).map_err(|err| format!("Connection failed to {addr}: {err}"))?;
+            open_tcp(addr, timeout).map_err(|err| msg!("connect_tcp", addr = addr, err = err))?;
         self.state.lock().unwrap().link = Some(Link::Tcp {
             stream: Some(stream),
             addr,
@@ -210,7 +217,7 @@ impl Master {
     }
 
     /// Uma transação; conta nos pacotes ou nos erros. Sem conexão é erro, sem contar.
-    pub fn transaction(&self, req: &Request) -> Result<Outcome, String> {
+    pub fn transaction(&self, req: &Request) -> Result<Outcome, Msg> {
         run(&self.state, &self.events, req)
     }
 
@@ -220,9 +227,9 @@ impl Master {
     }
 
     /// Repete `req` a cada `rate` até `stop_scan` (ou desconectar); cada volta vira um evento.
-    pub fn start_scan(&self, req: Request, rate: Duration) -> Result<(), String> {
+    pub fn start_scan(&self, req: Request, rate: Duration) -> Result<(), Msg> {
         if !self.connected() {
-            return Err("Not connected".into());
+            return Err(msg!("not_connected"));
         }
         // requisição inválida falharia em silêncio a cada volta da thread
         frame::request_pdu(req.function, req.start, req.count, &req.values)?;
@@ -250,7 +257,7 @@ impl Master {
                     }
                 }
             })
-            .map_err(|err| err.to_string())?;
+            .map_err(|err| msg!("other", text = err))?;
         *self.scan.lock().unwrap() = Some(Scan { stop, thread });
         Ok(())
     }
@@ -262,26 +269,12 @@ impl Master {
         }
     }
 
-    /// Report Slave ID (0x11), em texto para o Tools.
-    pub fn report_slave_id(&self, slave: u8) -> String {
+    /// Report Slave ID (0x11) para o Tools: o estado e os bytes de dados (o primeiro é o id).
+    pub fn report_slave_id(&self, slave: u8) -> Result<SlaveId, Msg> {
         let pdu = [frame::REPORT_SLAVE_ID];
-        let result =
-            exchange(&self.state, &self.events, slave, &pdu).and_then(|pdu| frame::slave_id(&pdu));
-        match result {
-            Ok((status, data)) => {
-                let id = data.first().map_or("-".into(), u8::to_string);
-                let mut text = format!(
-                    "Report Slave ID\nRun Status: {}\nSlave ID: {id}",
-                    if status { "ON" } else { "OFF" }
-                );
-                if !data.is_empty() {
-                    let bytes: Vec<String> = data.iter().map(|b| format!("{b:02X}")).collect();
-                    text.push_str(&format!("\nData: {}", bytes.join(" ")));
-                }
-                text
-            }
-            Err(err) => format!("Report Slave ID\nError: {err}"),
-        }
+        let (running, data) = exchange(&self.state, &self.events, slave, &pdu)
+            .and_then(|pdu| frame::slave_id(&pdu))?;
+        Ok(SlaveId { running, data })
     }
 }
 
@@ -291,12 +284,12 @@ impl Drop for Master {
     }
 }
 
-fn run(state: &Mutex<State>, events: &Sender<Event>, req: &Request) -> Result<Outcome, String> {
+fn run(state: &Mutex<State>, events: &Sender<Event>, req: &Request) -> Result<Outcome, Msg> {
     let pdu = frame::request_pdu(req.function, req.start, req.count, &req.values)?;
     let result = exchange(state, events, req.slave, &pdu)
         .and_then(|pdu| frame::response_values(req.function, req.count, &req.values, &pdu));
     if let Err(err) = &result {
-        if err == "Not connected" {
+        if err.code == "not_connected" {
             return Err(err.clone());
         }
         log::error!("Modbus transaction error: {err}");
@@ -326,9 +319,9 @@ fn exchange(
     events: &Sender<Event>,
     slave: u8,
     pdu: &[u8],
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, Msg> {
     let mut state = state.lock().unwrap();
-    let link = state.link.as_mut().ok_or("Not connected")?;
+    let link = state.link.as_mut().ok_or_else(|| msg!("not_connected"))?;
     let tcp = matches!(link, Link::Tcp { .. });
     let raw = |tx: bool, data: &[u8]| {
         let at = SystemTime::now()
@@ -339,7 +332,7 @@ fn exchange(
             at,
             mode: if tcp { "TCP" } else { "RTU" },
             hex: frame::hex(data),
-            detail: frame::describe(tx, tcp, data),
+            fields: frame::describe(tx, tcp, data),
         });
     };
     match link {
@@ -348,7 +341,7 @@ fn exchange(
             let _ = port.clear(serialport::ClearBuffer::Input); // sobras de uma resposta atrasada
             thread::sleep(*gap);
             raw(true, &adu);
-            port.write_all(&adu).map_err(|err| err.to_string())?;
+            port.write_all(&adu).map_err(|err| io_message(&err))?;
             let mut reply = Vec::new();
             let read = read_rtu(port.as_mut(), &mut reply);
             if !reply.is_empty() {
@@ -356,13 +349,10 @@ fn exchange(
             }
             read.map_err(|err| io_message(&err))?;
             if frame::crc16(&reply) != 0 {
-                return Err("CRC error in response".into());
+                return Err(msg!("crc"));
             }
             if reply[0] != slave {
-                return Err(format!(
-                    "Response from slave {} (expected {slave})",
-                    reply[0]
-                ));
+                return Err(msg!("wrong_slave", got = reply[0], expected = slave));
             }
             Ok(reply[1..reply.len() - 2].to_vec())
         }
@@ -394,7 +384,7 @@ fn exchange(
             let id = u16::from_be_bytes([reply[0], reply[1]]);
             if id != *transaction || reply[6] != slave {
                 *stream = None;
-                return Err("Response does not match the request".into());
+                return Err(msg!("mismatch"));
             }
             Ok(reply[7..].to_vec())
         }
@@ -471,11 +461,11 @@ fn read_into(conn: &mut TcpStream, buf: &mut [u8], reply: &mut Vec<u8>) -> io::R
     Ok(())
 }
 
-fn io_message(err: &io::Error) -> String {
+fn io_message(err: &io::Error) -> Msg {
     match err.kind() {
-        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => "No response (timeout)".into(),
-        io::ErrorKind::UnexpectedEof => "Connection closed by the slave".into(),
-        _ => err.to_string(),
+        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock => msg!("timeout"),
+        io::ErrorKind::UnexpectedEof => msg!("closed"),
+        _ => msg!("other", text = err),
     }
 }
 
@@ -566,8 +556,8 @@ mod tests {
 
         let err = master.transaction(&read(8, 5)).unwrap();
         assert_eq!(
-            err.error.as_deref(),
-            Some("Modbus exception 2 (illegal data address)")
+            err.error.unwrap().to_string(),
+            "Modbus exception 2 (illegal data address)"
         );
         assert_eq!((err.packets, err.errors), (3, 1));
 
@@ -586,11 +576,8 @@ mod tests {
         let server = serve(listener, 2);
         let (master, _events) = Master::new();
         master.connect_tcp(&tcp(&port)).unwrap();
-        let text = master.report_slave_id(1);
-        assert_eq!(
-            text,
-            "Report Slave ID\nRun Status: ON\nSlave ID: 42\nData: 2A 01 FF"
-        );
+        let id = master.report_slave_id(1).unwrap();
+        assert_eq!((id.running, id.data), (true, vec![0x2A, 0x01, 0xFF]));
         assert_eq!(master.transaction(&read(0, 2)).unwrap().packets, 1);
         server.join().unwrap();
     }
@@ -603,7 +590,7 @@ mod tests {
         let (_held, _) = listener.accept().unwrap(); // aceita e nunca responde
         let started = Instant::now();
         let out = master.transaction(&read(0, 1)).unwrap();
-        assert_eq!(out.error.as_deref(), Some("No response (timeout)"));
+        assert_eq!(out.error.map(|e| e.code), Some("timeout"));
         assert_eq!(out.errors, 1);
         assert!(started.elapsed() >= Duration::from_millis(1000)); // TimeOut 0 vira 1 s
     }
@@ -647,8 +634,8 @@ mod tests {
                 .is_err()
         );
         assert_eq!(
-            master.transaction(&read(0, 1)).unwrap_err(),
-            "Not connected"
+            master.transaction(&read(0, 1)).unwrap_err().code,
+            "not_connected"
         );
         assert!(
             master
@@ -695,7 +682,7 @@ mod tests {
         };
         assert_eq!(master.transaction(&req).unwrap().values, [0x1234]);
         let bad = master.transaction(&req).unwrap();
-        assert_eq!(bad.error.as_deref(), Some("CRC error in response"));
+        assert_eq!(bad.error.map(|e| e.code), Some("crc"));
         server.join().unwrap();
         drop(line);
         let first = events.try_iter().next();

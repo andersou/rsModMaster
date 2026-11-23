@@ -209,7 +209,7 @@ describe('custom converters', () => {
     expect(buildRows(conv({}))[0].cells[1].text).toBe('-');
     expect(buildRows(conv({ valid: false, values: [] }))[0].cells[1].text).toBe('-/-');
     const missing = buildRows(conv({ converters: { 1: 'gone' } }))[0].cells[1];
-    expect([missing.text, missing.error]).toEqual(['ERR', "converter 'gone' not found"]);
+    expect([missing.text, missing.error]).toEqual(['ERR', "Converter 'gone' not found"]);
   });
 
   it('cortado no fim do intervalo volta ao formato padrão; começo no meio vira continuação', () => {

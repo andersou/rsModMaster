@@ -1,5 +1,6 @@
 import { onCleanup, onMount, Show } from 'solid-js';
 import { app } from '../appStore';
+import { t } from '../i18n';
 import { logs } from '../logStore';
 import { panel } from '../panel';
 import { BusTools, BusView } from './BusMonitor';
@@ -17,19 +18,19 @@ export function BottomPanel() {
   return (
     <Show when={panel.tab()}>
       {(tab) => (
-        <section class="log-panel" aria-label="Developer panel">
+        <section class="log-panel" aria-label={t('panel.label')}>
           <div class="log-head">
-            <div class="panel-tabs" role="tablist" aria-label="Panel">
+            <div class="panel-tabs" role="tablist" aria-label={t('panel.tabs')}>
               <button role="tab" type="button" aria-selected={tab() === 'log'} onClick={() => panel.open('log')}>
                 <Icon name="square-terminal" />
-                Log
+                {t('panel.log')}
                 <Show when={logs.unseen()}>
                   <span class="badge">{logs.unseen()}</span>
                 </Show>
               </button>
               <button role="tab" type="button" aria-selected={tab() === 'bus'} onClick={() => panel.open('bus')}>
                 <Icon name="activity" />
-                Bus Monitor
+                {t('panel.bus')}
                 <Show when={app.raw().length}>
                   <span class="tab-count">{app.raw().length}</span>
                 </Show>
@@ -42,7 +43,7 @@ export function BottomPanel() {
             <Show when={tab() === 'bus'}>
               <BusTools />
             </Show>
-            <button class="btn ghost small square" type="button" title="Close (Esc)" aria-label="Close the panel" onClick={panel.close}>
+            <button class="btn ghost small square" type="button" title={t('panel.close')} aria-label={t('panel.closeLabel')} onClick={panel.close}>
               <Icon name="x" />
             </button>
           </div>

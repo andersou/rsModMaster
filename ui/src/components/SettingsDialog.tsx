@@ -2,6 +2,7 @@ import { createSignal, For, Show } from 'solid-js';
 import { createStore } from 'solid-js/store';
 import { api } from '../api';
 import { app } from '../appStore';
+import { t, tk } from '../i18n';
 import { ENDIAN_LABELS } from '../lib/registers';
 import { splitSerialPortName, validIp, validPort } from '../lib/settings';
 import type { Settings } from '../lib/types';
@@ -11,11 +12,7 @@ import { SelectField, TextField } from './Field';
 import { Segmented } from './Segmented';
 
 type Tab = 'rtu' | 'tcp' | 'general';
-const TABS = [
-  { value: 'rtu', label: 'Modbus RTU' },
-  { value: 'tcp', label: 'Modbus TCP' },
-  { value: 'general', label: 'General' },
-] as const;
+const TABS = ['rtu', 'tcp', 'general'] as const;
 const OTHER = '\u0000other';
 const RTS_MODES = ['None', 'Disable', 'Enable'];
 const isWindows = navigator.userAgent.includes('Windows');
@@ -86,94 +83,95 @@ export function SettingsDialog() {
       <form class="dialog-form" onSubmit={save}>
         <div class="dialog-head">
           <h2 class="dialog-title" id="settings-title">
-            Settings
+            {t('settings.title')}
           </h2>
-          <Segmented label="Settings section" options={TABS} value={tab()} autofocus onChange={setTab} />
+          <Segmented label={t('settings.section')} options={TABS.map((value) => ({ value, label: t(`settings.${value}`) }))} value={tab()} autofocus onChange={setTab} />
         </div>
         <Show when={tab() === 'rtu'}>
           <div class="form-grid">
             <div class="port-row">
-              <SelectField label="Serial Port" class="grow" value={customPort() ? OTHER : draft.serialPortName} onChange={(e) => pickPort(e.currentTarget.value)}>
+              <SelectField label={t('settings.serialPort')} class="grow" value={customPort() ? OTHER : draft.serialPortName} onChange={(e) => pickPort(e.currentTarget.value)}>
                 <For each={ports()}>{(port) => <option value={port}>{port}</option>}</For>
                 <Show when={portMissing()}>
-                  <option value={draft.serialPortName}>{draft.serialPortName} (not found)</option>
+                  <option value={draft.serialPortName}>{t('settings.notFound', { port: draft.serialPortName })}</option>
                 </Show>
-                <option value={OTHER}>Other…</option>
+                <option value={OTHER}>{t('settings.other')}</option>
               </SelectField>
-              <button class="btn outline square tall" type="button" title="Refresh ports" aria-label="Refresh ports" onClick={refreshPorts}>
+              <button class="btn outline square tall" type="button" title={t('settings.refreshPorts')} aria-label={t('settings.refreshPorts')} onClick={refreshPorts}>
                 <Icon name="refresh-cw" />
               </button>
             </div>
             <Show when={customPort()}>
               <TextField
-                label="Port name"
+                label={t('settings.portName')}
                 class="wide"
                 placeholder={isWindows ? 'COM3' : '/dev/ttyUSB0'}
                 value={draft.serialPortName}
                 onInput={(e) => setDraft('serialPortName', e.currentTarget.value)}
               />
             </Show>
-            <TextField label="Baud" list="bauds" invalid={invalid.baud()} value={draft.baud} onInput={(e) => setDraft('baud', e.currentTarget.value)} />
+            <TextField label={t('settings.baud')} list="bauds" invalid={invalid.baud()} value={draft.baud} onInput={(e) => setDraft('baud', e.currentTarget.value)} />
             <datalist id="bauds">
               <For each={BAUDS}>{(baud) => <option value={baud} />}</For>
             </datalist>
-            <SelectField label="Data Bits" value={draft.dataBits} onChange={(e) => setDraft('dataBits', e.currentTarget.value)}>
+            <SelectField label={t('settings.dataBits')} value={draft.dataBits} onChange={(e) => setDraft('dataBits', e.currentTarget.value)}>
               <option value="7">7</option>
               <option value="8">8</option>
             </SelectField>
-            <SelectField label="Stop Bits" value={draft.stopBits} onChange={(e) => setDraft('stopBits', e.currentTarget.value)}>
+            <SelectField label={t('settings.stopBits')} value={draft.stopBits} onChange={(e) => setDraft('stopBits', e.currentTarget.value)}>
               <option value="1">1</option>
               <option value="2">2</option>
             </SelectField>
-            <SelectField label="Parity" value={draft.parity} onChange={(e) => setDraft('parity', e.currentTarget.value)}>
-              <option value="None">None</option>
-              <option value="Even">Even</option>
-              <option value="Odd">Odd</option>
+            {/* o valor gravado no INI segue em inglês, como o qModMaster espera */}
+            <SelectField label={t('settings.parity')} value={draft.parity} onChange={(e) => setDraft('parity', e.currentTarget.value)}>
+              <option value="None">{t('settings.parityNone')}</option>
+              <option value="Even">{t('settings.parityEven')}</option>
+              <option value="Odd">{t('settings.parityOdd')}</option>
             </SelectField>
-            <SelectField label="RTS" value={draft.rts} onChange={(e) => setDraft('rts', e.currentTarget.value)}>
-              <For each={rtsModes()}>{(mode) => <option value={mode}>{mode}</option>}</For>
+            <SelectField label={t('settings.rts')} value={draft.rts} onChange={(e) => setDraft('rts', e.currentTarget.value)}>
+              <For each={rtsModes()}>{(mode) => <option value={mode}>{tk(`settings.rts${mode}`) ?? mode}</option>}</For>
             </SelectField>
           </div>
         </Show>
         <Show when={tab() === 'tcp'}>
           <div class="form-grid">
-            <TextField label="Slave IP" invalid={invalid.ip()} value={draft.slaveIp} onInput={(e) => setDraft('slaveIp', e.currentTarget.value)} />
-            <TextField label="TCP Port" invalid={invalid.port()} value={draft.tcpPort} onInput={(e) => setDraft('tcpPort', e.currentTarget.value)} />
+            <TextField label={t('settings.slaveIp')} invalid={invalid.ip()} value={draft.slaveIp} onInput={(e) => setDraft('slaveIp', e.currentTarget.value)} />
+            <TextField label={t('settings.tcpPort')} invalid={invalid.port()} value={draft.tcpPort} onInput={(e) => setDraft('tcpPort', e.currentTarget.value)} />
           </div>
         </Show>
         <Show when={tab() === 'general'}>
           <div class="form-grid">
             <TextField
-              label="Response Timeout (ms)"
+              label={t('settings.timeout')}
               invalid={invalid.timeOut()}
               value={draft.timeOut}
               onInput={(e) => setDraft('timeOut', e.currentTarget.value)}
             />
             <TextField
-              label="Max No Of Bus Monitor Lines"
+              label={t('settings.maxLines')}
               invalid={invalid.lines()}
               value={draft.maxNoOfLines}
               onInput={(e) => setDraft('maxNoOfLines', e.currentTarget.value)}
             />
-            <TextField label="Base Addr" invalid={invalid.baseAddr()} value={draft.baseAddr} onInput={(e) => setDraft('baseAddr', e.currentTarget.value)} />
-            <SelectField label="Float Byte Order" value={draft.floatEndian} onChange={(e) => setDraft('floatEndian', Number(e.currentTarget.value))}>
+            <TextField label={t('settings.baseAddr')} invalid={invalid.baseAddr()} value={draft.baseAddr} onInput={(e) => setDraft('baseAddr', e.currentTarget.value)} />
+            <SelectField label={t('settings.floatOrder')} value={draft.floatEndian} onChange={(e) => setDraft('floatEndian', Number(e.currentTarget.value))}>
               <For each={ENDIAN_LABELS}>{(label, i) => <option value={i()}>{label}</option>}</For>
             </SelectField>
           </div>
-          <p class="muted hint-text">Timeouts under 1000 ms are raised to 1000 ms when connecting.</p>
+          <p class="muted hint-text">{t('settings.timeoutHint')}</p>
         </Show>
         <Show when={app.connected()}>
-          <p class="muted hint-text">Connection changes apply the next time you connect.</p>
+          <p class="muted hint-text">{t('settings.applyNext')}</p>
         </Show>
         <Show when={anyInvalid()}>
-          <p class="error">Fix the highlighted fields (in any tab) before saving.</p>
+          <p class="error">{t('settings.fixFields')}</p>
         </Show>
         <div class="dialog-actions">
           <button class="btn outline" type="button" onClick={() => app.setDialog(null)}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button class="btn primary" type="submit" disabled={anyInvalid()}>
-            OK
+            {t('common.ok')}
           </button>
         </div>
       </form>

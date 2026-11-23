@@ -14,6 +14,7 @@ import { ToolsDialog } from './components/ToolsDialog';
 import { Toasts } from './components/Toasts';
 import { logs } from './logStore';
 import { isMac } from './platform';
+import { errorText } from './i18n';
 import { toast } from './toasts';
 
 /** Atalhos: ⌘↩ / Ctrl+Enter lê ou escreve; ⌘K / Ctrl+K conecta ou desconecta; ⌘G / Ctrl+G alterna
@@ -45,7 +46,7 @@ export function App() {
     // ouvir antes do primeiro comando: nenhum quadro do bus monitor se perde
     await api.onCoreEvents(app.onCoreEvents);
     await logs.listen();
-    await app.init().catch((err) => toast(String(err), 'danger'));
+    await app.init().catch((err) => toast(errorText(err), 'danger'));
   });
   onCleanup(() => {
     document.removeEventListener('keydown', onShortcut);

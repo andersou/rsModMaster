@@ -1,5 +1,6 @@
 import { createEffect, createSignal, For, on, Show } from 'solid-js';
 import { api } from '../api';
+import { errorText, t } from '../i18n';
 import { formatLine, LEVEL_LABELS, LEVELS, type LogEntry } from '../lib/logs';
 import { localIso } from '../lib/time';
 import { logs } from '../logStore';
@@ -26,16 +27,16 @@ export function LogTools() {
   const empty = () => logs.visible().length === 0;
   const copy = () =>
     navigator.clipboard.writeText(visibleText()).then(
-      () => toast('Visible lines copied'),
-      (error) => toast(`Could not copy: ${error}`, 'danger'),
+      () => toast(t('log.copied')),
+      (error) => toast(t('log.copyFailed', { error: String(error) }), 'danger'),
     );
   const exportLogs = async () => {
     try {
       const stamp = localIso(Date.now()).slice(0, 19).replace(/[:T]/g, '-');
-      const path = await api.saveText(`${visibleText()}\n`, `rsmodmaster-${stamp}.log`, 'Export Log');
-      if (path) toast(`Log exported to ${path}`);
+      const path = await api.saveText(`${visibleText()}\n`, `rsmodmaster-${stamp}.log`, t('log.exportTitle'), t('store.textFilter'));
+      if (path) toast(t('log.exported', { path }));
     } catch (error) {
-      toast(String(error), 'danger');
+      toast(errorText(error), 'danger');
     }
   };
   return (
@@ -45,8 +46,8 @@ export function LogTools() {
         <input
           ref={search}
           type="text"
-          placeholder="Search the log"
-          aria-label="Search the log"
+          placeholder={t('log.search')}
+          aria-label={t('log.search')}
           autocomplete="off"
           spellcheck={false}
           value={logs.query()}
@@ -56,7 +57,7 @@ export function LogTools() {
           <button
             class="reveal"
             type="button"
-            aria-label="Clear search"
+            aria-label={t('log.clearSearch')}
             onClick={() => {
               logs.setQuery('');
               search.focus();
@@ -66,7 +67,7 @@ export function LogTools() {
           </button>
         </Show>
       </div>
-      <div class="levels" role="group" aria-label="Levels shown">
+      <div class="levels" role="group" aria-label={t('log.levels')}>
         <For each={LEVELS}>
           {(level) => {
             const pressed = () => logs.levels().has(level);
@@ -75,7 +76,7 @@ export function LogTools() {
                 class="btn ghost small toggle"
                 type="button"
                 aria-pressed={pressed()}
-                title={pressed() ? 'Remove this level from the filter' : 'Filter by this level'}
+                title={pressed() ? t('log.removeLevel') : t('log.filterLevel')}
                 onClick={() => logs.toggleLevel(level)}
               >
                 {LEVEL_LABELS[level]}
@@ -85,22 +86,22 @@ export function LogTools() {
         </For>
       </div>
       <span class="log-sep" />
-      <button class="btn ghost small square" type="button" title="Copy visible lines" aria-label="Copy visible lines" disabled={empty()} onClick={copy}>
+      <button class="btn ghost small square" type="button" title={t('log.copy')} aria-label={t('log.copy')} disabled={empty()} onClick={copy}>
         <Icon name="copy" />
       </button>
-      <button class="btn ghost small square" type="button" title="Export visible lines…" aria-label="Export visible lines…" disabled={empty()} onClick={exportLogs}>
+      <button class="btn ghost small square" type="button" title={t('log.export')} aria-label={t('log.export')} disabled={empty()} onClick={exportLogs}>
         <Icon name="download" />
       </button>
       <button
         class="btn ghost small square"
         type="button"
-        title="Open the log file (full history)"
-        aria-label="Open the log file"
-        onClick={() => api.openLog().catch((error) => toast(String(error), 'danger'))}
+        title={t('log.open')}
+        aria-label={t('log.openLabel')}
+        onClick={() => api.openLog().catch((error) => toast(errorText(error), 'danger'))}
       >
         <Icon name="external-link" />
       </button>
-      <button class="btn ghost small square" type="button" title="Clear the panel" aria-label="Clear the log" disabled={!logs.entries().length} onClick={logs.clear}>
+      <button class="btn ghost small square" type="button" title={t('log.clear')} aria-label={t('log.clearLabel')} disabled={!logs.entries().length} onClick={logs.clear}>
         <Icon name="trash-2" />
       </button>
     </>
@@ -135,19 +136,19 @@ export function LogList() {
   };
   return (
     <div class="log-box">
-      <div ref={list} class="log-list" tabindex="0" role="region" aria-label="Log lines" hidden={empty()} onScroll={onScroll}>
+      <div ref={list} class="log-list" tabindex="0" role="region" aria-label={t('log.lines')} hidden={empty()} onScroll={onScroll}>
         <For each={logs.visible()}>{(entry) => <LogRow entry={entry} />}</For>
       </div>
       <Show when={empty()}>
         <div class="log-empty">
           <Icon name="square-terminal" />
-          <p class="log-empty-title">{logs.entries().length ? 'Nothing matches the filters' : 'No logs to display'}</p>
+          <p class="log-empty-title">{logs.entries().length ? t('log.noMatchTitle') : t('log.emptyTitle')}</p>
           <p class="log-empty-text">
-            {logs.entries().length ? 'Change the search or the selected levels.' : 'Connections, errors and converter messages appear here as the app runs.'}
+            {logs.entries().length ? t('log.noMatchText') : t('log.emptyText')}
           </p>
           <Show when={logs.entries().length}>
             <button class="btn outline small" type="button" onClick={() => logs.clearFilters()}>
-              Clear filters
+              {t('log.clearFilters')}
             </button>
           </Show>
         </div>
@@ -155,7 +156,7 @@ export function LogList() {
       <Show when={jump()}>
         <button class="btn small jump" type="button" onClick={toEnd}>
           <Icon name="arrow-down" />
-          <span>Jump to latest</span>
+          <span>{t('log.jump')}</span>
         </button>
       </Show>
     </div>

@@ -1,4 +1,5 @@
 import { app } from '../appStore';
+import { LOCALES, locale, setLocale, t } from '../i18n';
 import { panel } from '../panel';
 import { setThemePref, themePref } from '../theme';
 import { Segmented } from './Segmented';
@@ -19,29 +20,35 @@ export function TitleBar() {
       <Icon name="cpu" class="brand" />
       <span class="app-name">rsModMaster</span>
       <span class="spacer" />
-      <div class="titlebar-group" role="group" aria-label="Session">
+      <div class="titlebar-group" role="group" aria-label={t('titlebar.session')}>
         {/* trocar a sessão no meio do scan deixaria a thread com a requisição antiga */}
-        <Action icon="file-plus" label="New Session" disabled={app.scanning()} onClick={app.newSession} />
-        <Action icon="folder-open" label="Load Session" disabled={app.scanning()} onClick={app.loadSession} />
-        <Action icon="save" label="Save Session" onClick={app.saveSession} />
+        <Action icon="file-plus" label={t('titlebar.newSession')} disabled={app.scanning()} onClick={app.newSession} />
+        <Action icon="folder-open" label={t('titlebar.loadSession')} disabled={app.scanning()} onClick={app.loadSession} />
+        <Action icon="save" label={t('titlebar.saveSession')} onClick={app.saveSession} />
       </div>
-      <div class="titlebar-group" role="group" aria-label="View">
-        <Action icon="activity" label="Bus Monitor" onClick={() => panel.toggle('bus')} />
-        <Action icon="wrench" label="Tools" onClick={() => app.setDialog('tools')} />
-        <Action icon="braces" label="Converters" onClick={() => app.setDialog('converters')} />
-        <Action icon="file-text" label="Log" onClick={() => panel.toggle('log')} />
-        <Action icon="settings-2" label="Settings" onClick={() => app.setDialog('settings')} />
-        <Action icon="info" label="About" onClick={() => app.setDialog('about')} />
+      <div class="titlebar-group" role="group" aria-label={t('titlebar.view')}>
+        <Action icon="activity" label={t('titlebar.busMonitor')} onClick={() => panel.toggle('bus')} />
+        <Action icon="wrench" label={t('titlebar.tools')} onClick={() => app.setDialog('tools')} />
+        <Action icon="braces" label={t('titlebar.converters')} onClick={() => app.setDialog('converters')} />
+        <Action icon="file-text" label={t('titlebar.log')} onClick={() => panel.toggle('log')} />
+        <Action icon="settings-2" label={t('titlebar.settings')} onClick={() => app.setDialog('settings')} />
+        <Action icon="info" label={t('titlebar.about')} onClick={() => app.setDialog('about')} />
       </div>
       <div class="titlebar-group">
         <Segmented
-          label="Theme"
+          label={t('language')}
+          value={locale()}
+          onChange={setLocale}
+          options={LOCALES.map((l) => ({ value: l.value, label: l.value.toUpperCase(), title: l.label }))}
+        />
+        <Segmented
+          label={t('titlebar.theme')}
           value={themePref()}
           onChange={setThemePref}
           options={[
-            { value: 'system', label: <Icon name="monitor" />, title: 'Theme: follow the system' },
-            { value: 'light', label: <Icon name="sun" />, title: 'Theme: light' },
-            { value: 'dark', label: <Icon name="moon" />, title: 'Theme: dark' },
+            { value: 'system', label: <Icon name="monitor" />, title: t('titlebar.themeSystem') },
+            { value: 'light', label: <Icon name="sun" />, title: t('titlebar.themeLight') },
+            { value: 'dark', label: <Icon name="moon" />, title: t('titlebar.themeDark') },
           ]}
         />
       </div>

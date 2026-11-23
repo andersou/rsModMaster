@@ -32,6 +32,7 @@ import {
 import { type ChartData, dropColumn, emptyChart, fillSample, freeSlot, pushSample, resetColumn, type WindowKey, WINDOWS } from './lib/chart';
 import { convertAddress, type FormErrors, parseAddress, validateForm } from './lib/form';
 import type { Catalog, CoreEvent, Outcome, Request, Settings } from './lib/types';
+import { errorText, t } from './i18n';
 import { toast } from './toasts';
 
 export type Mode = 'RTU' | 'TCP';
@@ -42,10 +43,9 @@ export interface RawLine {
   at: number;
   mode: string;
   hex: string;
-  detail: string;
+  /** campos decodificados pelo core: chave (rótulo em `bus.fields`) e valor */
+  fields: [string, string][];
 }
-
-const FLOAT_NEEDS_FC10 = 'Float requires Write Multiple Registers (FC 10): the register is a 32-bit float.';
 
 const int = (raw: string | number, fallback: number) => {
   const n = parseInt(String(raw), 10);
@@ -220,9 +220,12 @@ createEffect(
       if (seq !== decodeSeq) return;
       setConverted(Object.fromEntries(items.map((item, i) => [item.address, results[i]])));
       // como no scan: a mesma mensagem de script uma vez só
-      for (const r of results) if (r.error && r.error !== lastConverterError) toast((lastConverterError = r.error), 'danger');
+      for (const r of results) {
+        const text = r.error && errorText(r.error);
+        if (text && text !== lastConverterError) toast((lastConverterError = text), 'danger');
+      }
     } catch (err) {
-      if (seq === decodeSeq) toast(String(err), 'danger');
+      if (seq === decodeSeq) toast(errorText(err), 'danger');
     }
   }),
 );
@@ -271,7 +274,7 @@ async function persist() {
   try {
     await api.saveSettings(structuredClone(unwrap(settings)));
   } catch (err) {
-    toast(String(err), 'danger');
+    toast(errorText(err), 'danger');
   }
 }
 
@@ -311,14 +314,14 @@ async function writeValues(): Promise<number[] | undefined | null> {
   if (!spec().write) return undefined;
   if (startsInsideFloat(rows())) {
     const start = startAddress();
-    toast(`Register ${start} is the middle of a float or converter that starts before it: start there or reset its format.`, 'warning');
+    toast(t('store.middle', { start }), 'warning');
     return null;
   }
   const convCells = rows()
     .flatMap((r) => r.cells)
     .filter((c) => c.kind === 'value' && c.converter !== undefined);
   if (singleRegisterWrite() && convCells.some((c) => (sizes()[c.converter!] ?? 1) > 1)) {
-    toast('A converter over several registers requires Write Multiple Registers (FC 10).', 'warning');
+    toast(t('store.converterNeedsFc10'), 'warning');
     return null;
   }
   const encoded: Record<number, number[]> = {};
@@ -328,20 +331,20 @@ async function writeValues(): Promise<number[] | undefined | null> {
       const r = results[i];
       if (r.error !== undefined || !r.value) {
         setInvalidCell(cell.address);
-        toast(`Register ${cell.address}: ${r.error ?? 'no value'}`, 'danger');
+        toast(t('store.convertFailed', { address: cell.address, error: r.error ? errorText(r.error) : t('store.noValue') }), 'danger');
         return null;
       }
       encoded[cell.address] = r.value;
     }
   }
   if (singleRegisterWrite() && hasFloat(rows())) {
-    toast(FLOAT_NEEDS_FC10, 'warning');
+    toast(t('store.floatNeedsFc10'), 'warning');
     return null;
   }
   const result = collectWrite(rows(), cellText, spec().bits, grid().signed, encoded);
   if ('invalid' in result) {
     setInvalidCell(result.invalid);
-    toast('Invalid write value in table.', 'danger');
+    toast(t('store.invalidWrite'), 'danger');
     return null;
   }
   setInvalidCell(null);
@@ -359,9 +362,9 @@ function sample(outcome: Outcome): number {
       if (cell.kind === 'value' && cell.converter === undefined && charted().has(cell.address)) nums.set(cell.address, cell.num ?? null);
     }
   }
-  const t = pushSample(chart, outcome.at, nums, [...charted().keys()]);
+  const time = pushSample(chart, outcome.at, nums, [...charted().keys()]);
   bumpChart();
-  return t;
+  return time;
 }
 
 function apply(outcome: Outcome, fromScan = false) {
@@ -371,14 +374,15 @@ function apply(outcome: Outcome, fromScan = false) {
   // escrita que falhou: o que foi digitado fica para tentar de novo
   if (outcome.error === null) setEdits(reconcile({}));
   // no scan, o mesmo erro a cada volta vira um aviso só
-  if (outcome.error && (!fromScan || outcome.error !== lastScanError)) toast(outcome.error, 'danger');
-  if (fromScan) lastScanError = outcome.error;
+  const error = outcome.error && errorText(outcome.error);
+  if (error && (!fromScan || error !== lastScanError)) toast(error, 'danger');
+  if (fromScan) lastScanError = error;
 }
 
 function onCoreEvents(events: CoreEvent[]) {
   const lines: RawLine[] = [];
   for (const event of events) {
-    if (event.kind === 'raw') lines.push({ type: event.tx ? 'Tx' : 'Rx', at: event.at, mode: event.mode, hex: event.hex, detail: event.detail });
+    if (event.kind === 'raw') lines.push({ type: event.tx ? 'Tx' : 'Rx', at: event.at, mode: event.mode, hex: event.hex, fields: event.fields });
     else if (scanning()) apply(event, true);
   }
   if (lines.length) setRaw((list) => [...list, ...lines].slice(-maxLines()));
@@ -390,7 +394,7 @@ async function guarded(action: () => Promise<void>) {
   try {
     await action();
   } catch (err) {
-    toast(String(err), 'danger');
+    toast(errorText(err), 'danger');
   } finally {
     setBusy(false);
   }
@@ -443,7 +447,7 @@ export const app = {
     try {
       setCatalog(await api.converters(true));
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     }
   },
   setCatalog,
@@ -492,7 +496,7 @@ export const app = {
       const timeoutMs = settings.timeOut;
       if (form.mode === 'TCP') {
         await api.connectTcp({ ip: settings.slaveIp, port: settings.tcpPort, timeoutMs });
-        toast(`Connected to ${settings.slaveIp}:${settings.tcpPort}`);
+        toast(t('store.connectedTcp', { target: `${settings.slaveIp}:${settings.tcpPort}` }));
       } else {
         await api.connectRtu({
           port: settings.serialPortName,
@@ -503,7 +507,7 @@ export const app = {
           rts: settings.rts,
           timeoutMs,
         });
-        toast(`Connected on ${settings.serialPortName} @ ${settings.baud} baud`);
+        toast(t('store.connectedRtu', { port: settings.serialPortName, baud: settings.baud }));
       }
       setConnected(form.mode);
       await persist();
@@ -517,7 +521,7 @@ export const app = {
       const outcome = await api.transaction(request(values));
       apply(outcome);
       if (values && outcome.error === null) {
-        toast(`Wrote ${values.length} ${spec().bits ? 'coil' : 'register'}${values.length > 1 ? 's' : ''} at ${startAddress()}`);
+        toast(t('store.wrote', { n: values.length, bits: spec().bits, start: startAddress() }));
       }
       await persist();
     }),
@@ -559,7 +563,7 @@ export const app = {
       bumpChart();
     } else {
       const slot = freeSlot(charted().values());
-      if (slot === null) return toast('The chart shows at most 8 registers: remove one first.', 'warning');
+      if (slot === null) return toast(t('store.chartFull'), 'warning');
       setSettings('registerCharts', String(address), slot);
     }
     void persist();
@@ -604,12 +608,12 @@ export const app = {
       setForm({ fn: code, qty: String(clampQuantity(int(form.qty, next.min), next)) });
     }
     if (code === 0x06 && form.format === 'float') setForm('format', 'dec');
-    if (code === 0x05) toast('Write Single Coil writes one coil at a time.', 'warning');
-    else if (code === 0x06 && hasFloat(rows())) toast(FLOAT_NEEDS_FC10, 'warning');
+    if (code === 0x05) toast(t('store.singleCoil'), 'warning');
+    else if (code === 0x06 && hasFloat(rows())) toast(t('store.floatNeedsFc10'), 'warning');
   },
 
   setFormat(address: number, base: Base, endian?: Endian) {
-    if (base === 'float' && singleRegisterWrite()) return toast(FLOAT_NEEDS_FC10, 'warning');
+    if (base === 'float' && singleRegisterWrite()) return toast(t('store.floatNeedsFc10'), 'warning');
     const message = validateFormat(address, base, formats(), assigned(), sizes());
     if (message) return toast(message, 'warning');
     resetColumn(chart, address);
@@ -648,26 +652,26 @@ export const app = {
 
   async loadSession() {
     try {
-      const loadedSettings = await api.loadSession();
+      const loadedSettings = await api.loadSession(t('titlebar.loadSession'), t('store.sessionFilter'));
       if (!loadedSettings) return;
       setSettings(reconcile(loadedSettings));
       clearChart();
       checkpoints.clear();
       loadForm();
       clearTable();
-      toast('Session loaded');
+      toast(t('store.sessionLoaded'));
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     }
   },
 
   async saveSession() {
     syncSettings();
     try {
-      const path = await api.saveSession(structuredClone(unwrap(settings)));
-      if (path) toast(`Session saved to ${path}`);
+      const path = await api.saveSession(structuredClone(unwrap(settings)), t('titlebar.saveSession'), t('store.sessionFilter'));
+      if (path) toast(t('store.sessionSaved', { path }));
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     }
   },
 };

@@ -2,6 +2,9 @@
 // pares float de 32 bits nas 4 ordens de byte, a grade de 10 colunas e a leitura do que o usuário
 // digitou para escrever. Porte do registers.py do fModMaster.
 
+import { errorText, t, tk } from '../i18n';
+import type { Msg } from './types';
+
 export type Base = 'bin' | 'dec' | 'hex' | 'float';
 /** Ordem dos bytes do float, como no libmodbus: 0 ABCD, 1 DCBA, 2 BADC, 3 CDAB. */
 export type Endian = 0 | 1 | 2 | 3;
@@ -21,35 +24,40 @@ export const toEndian = (n: number | undefined): Endian => (n === 1 || n === 2 |
 
 export interface FunctionSpec {
   code: number;
-  name: string;
+  /** no idioma da tela (getter: lido em JSX, acompanha a troca de idioma) */
+  readonly name: string;
   /** bobinas/entradas discretas: valores 0/1, sem formato */
   bits: boolean;
   min: number;
   max: number;
-  quantityLabel: string;
+  readonly quantityLabel: string;
   write: boolean;
 }
 
-const fn = (code: number, name: string, bits: boolean, min: number, max: number, write = false): FunctionSpec => ({
+const fn = (code: number, bits: boolean, min: number, max: number, write = false): FunctionSpec => ({
   code,
-  name,
+  get name() {
+    return tk(`functions.f${code.toString(16).padStart(2, '0')}`) ?? '';
+  },
   bits,
   min,
   max,
-  quantityLabel: bits ? 'Number of Coils' : 'Number of Registers',
+  get quantityLabel() {
+    return t(bits ? 'functions.coils' : 'functions.registers');
+  },
   write,
 });
 
 /** Na ordem do qModMaster: `[Session] FunctionCode` guarda o índice nesta lista. */
 export const FUNCTIONS: readonly FunctionSpec[] = [
-  fn(0x01, 'Read Coils', true, 1, 2000),
-  fn(0x02, 'Read Discrete Inputs', true, 1, 2000),
-  fn(0x03, 'Read Holding Registers', false, 1, 125),
-  fn(0x04, 'Read Input Registers', false, 1, 125),
-  fn(0x05, 'Write Single Coil', true, 1, 1, true),
-  fn(0x06, 'Write Single Register', false, 1, 1, true),
-  fn(0x0f, 'Write Multiple Coils', true, 2, 1968, true),
-  fn(0x10, 'Write Multiple Registers', false, 2, 123, true),
+  fn(0x01, true, 1, 2000),
+  fn(0x02, true, 1, 2000),
+  fn(0x03, false, 1, 125),
+  fn(0x04, false, 1, 125),
+  fn(0x05, true, 1, 1, true),
+  fn(0x06, false, 1, 1, true),
+  fn(0x0f, true, 2, 1968, true),
+  fn(0x10, false, 2, 123, true),
 ];
 
 export const functionSpec = (code: number) => FUNCTIONS.find((f) => f.code === code) ?? FUNCTIONS[0];
@@ -158,7 +166,8 @@ export interface Grid {
 
 export interface Converted {
   value?: string;
-  error?: string;
+  /** erro do core; traduzido ao montar a grade (acompanha a troca de idioma) */
+  error?: Msg | string;
 }
 
 /** Número escrito por extenso (decimal, com expoente); `null` para texto vazio, `inf`, `nan` ou
@@ -223,7 +232,7 @@ export function buildRows(grid: Grid): Row[] {
     const address = start + i;
     const value = grid.values[i];
     const base = formatAt(address);
-    const tooltip = `Address : ${address}`;
+    const tooltip = t('registers.address', { address });
     if (address <= insideUntil) {
       used.set(address, { ...continuation(address, 'dec', 0, tooltip, value !== undefined), overridden: true });
       continue;
@@ -242,9 +251,9 @@ export function buildRows(grid: Grid): Row[] {
       let text = '-';
       let error: string | undefined;
       if (!grid.valid) text = '-/-';
-      else if (sizes[id] === undefined) error = `converter '${id}' not found`;
+      else if (sizes[id] === undefined) error = t('errors.converter_missing', { id });
       else if (missing) text = '-';
-      else if (result?.error !== undefined) error = result.error;
+      else if (result?.error !== undefined) error = errorText(result.error);
       else if (result?.value !== undefined) text = result.value;
       const range = size > 1 ? `${tooltip} → ${address + size - 1}` : tooltip;
       used.set(address, {
@@ -262,7 +271,7 @@ export function buildRows(grid: Grid): Row[] {
         num: !error && result?.value !== undefined ? (parseNumber(result.value) ?? undefined) : undefined,
       });
       for (let k = 1; k < size; k++) {
-        const cell = continuation(address + k, 'dec', 0, `Address : ${address + k}`, grid.values[i + k] !== undefined);
+        const cell = continuation(address + k, 'dec', 0, t('registers.address', { address: address + k }), grid.values[i + k] !== undefined);
         used.set(address + k, { ...cell, overridden: own !== undefined });
       }
       i += size - 1;
@@ -302,7 +311,7 @@ export function buildRows(grid: Grid): Row[] {
     });
     if (paired) {
       const next = address + 1;
-      const cell = continuation(next, 'float', endianAt(address), `Address : ${next}`, grid.values[i + 1] !== undefined);
+      const cell = continuation(next, 'float', endianAt(address), t('registers.address', { address: next }), grid.values[i + 1] !== undefined);
       cell.overridden = formats[address] !== undefined;
       used.set(next, cell);
       i++;
@@ -398,15 +407,15 @@ export function validateFormat(
   converters: Record<number, string> = {},
   sizes: Record<string, number> = {},
 ): string | null {
-  if (formats[address - 1] === 'float') return `Register ${address} is consumed by float at address ${address - 1}`;
+  if (formats[address - 1] === 'float') return t('validation.consumedByFloat', { address, owner: address - 1 });
   const owner = converterOwner(address, converters, sizes);
-  if (owner !== null && owner !== address) return `Register ${address} is inside the converter at ${owner}`;
+  if (owner !== null && owner !== address) return t('validation.insideConverter', { address, owner });
   if (base === 'float' && converters[address + 1] !== undefined) {
-    return `Register ${address + 1} has a converter; cannot extend float at address ${address}`;
+    return t('validation.nextHasConverter', { next: address + 1, address });
   }
   const next = formats[address + 1];
   if (base === 'float' && next !== undefined && next !== 'float') {
-    return `Register ${address + 1} already has an explicit format; cannot extend float at address ${address}`;
+    return t('validation.nextHasFormat', { next: address + 1, address });
   }
   return null;
 }
@@ -419,15 +428,15 @@ export function validateConverter(
   converters: Record<number, string>,
   sizes: Record<string, number>,
 ): string | null {
-  if (formats[address - 1] === 'float') return `Register ${address} is consumed by float at address ${address - 1}`;
+  if (formats[address - 1] === 'float') return t('validation.consumedByFloat', { address, owner: address - 1 });
   const owner = converterOwner(address, converters, sizes);
-  if (owner !== null && owner !== address) return `Register ${address} is inside the converter at ${owner}`;
+  if (owner !== null && owner !== address) return t('validation.insideConverter', { address, owner });
   for (let a = address + 1; a < address + size; a++) {
     if (formats[a] !== undefined || converters[a] !== undefined) {
-      return `Register ${a} already has its own format; this converter needs ${size} registers from ${address}`;
+      return t('validation.converterOverlap', { address: a, size, start: address });
     }
   }
-  if (address + size - 1 > 65535) return 'The converter goes past address 65535';
+  if (address + size - 1 > 65535) return t('validation.converterPastEnd');
   return null;
 }
 

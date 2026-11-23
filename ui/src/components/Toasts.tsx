@@ -1,3 +1,4 @@
+import { t } from '../i18n';
 import { For } from 'solid-js';
 import { dismiss, type Tone, toasts } from '../toasts';
 import { Icon } from './Icon';
@@ -12,7 +13,7 @@ export function Toasts() {
           <div class={`toast ${toast.tone}`} role={toast.tone === 'danger' ? 'alert' : 'status'}>
             <Icon name={ICONS[toast.tone]} />
             <span class="spacer">{toast.text}</span>
-            <button class="toast-close" type="button" aria-label="Dismiss" onClick={() => dismiss(toast.id)}>
+            <button class="toast-close" type="button" aria-label={t('common.dismiss')} onClick={() => dismiss(toast.id)}>
               <Icon name="x" />
             </button>
           </div>

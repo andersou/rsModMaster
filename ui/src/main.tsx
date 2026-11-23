@@ -1,6 +1,7 @@
 import { render } from 'solid-js/web';
 import { App } from './App';
 import { isMac } from './platform';
+import { startLocale } from './i18n';
 import { startTheme } from './theme';
 import './styles.css';
 
@@ -8,5 +9,6 @@ import './styles.css';
 document.documentElement.classList.toggle('mac', isMac);
 
 startTheme();
+startLocale();
 
 render(() => <App />, document.getElementById('root')!);

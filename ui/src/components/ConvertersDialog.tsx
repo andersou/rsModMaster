@@ -1,6 +1,7 @@
 import { createMemo, createSignal, For, Show } from 'solid-js';
 import { api } from '../api';
 import { app } from '../appStore';
+import { errorText, t } from '../i18n';
 import type { Catalog } from '../lib/types';
 import { toast } from '../toasts';
 import { CodeEditor } from './CodeEditor';
@@ -28,13 +29,16 @@ export function ConvertersDialog() {
     return [...new Set([...ok, ...broken])].sort();
   });
   const info = (id: string) => app.catalog().converters.find((c) => c.id === id);
-  const errorOf = (id: string) => app.catalog().errors.find((e) => e.file === `${id}.lua`)?.message;
+  const errorOf = (id: string) => {
+    const message = app.catalog().errors.find((e) => e.file === `${id}.lua`)?.message;
+    return message && errorText(message);
+  };
 
   const select = async (id: string | null) => {
-    if (dirty()) return toast('Save or revert the changes first.', 'warning');
+    if (dirty()) return toast(t('converters.saveFirst'), 'warning');
     setConfirmDelete(false);
     setSelected(id);
-    const text = id ? await api.converterSource(id).catch((err) => (toast(String(err), 'danger'), '')) : '';
+    const text = id ? await api.converterSource(id).catch((err) => (toast(errorText(err), 'danger'), '')) : '';
     setSource(text);
     setOriginal(text);
   };
@@ -49,7 +53,7 @@ export function ConvertersDialog() {
     try {
       refreshed(await api.converters(true));
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     }
     await select(selected() && entries().includes(selected()!) ? selected() : (entries()[0] ?? null));
   };
@@ -62,26 +66,26 @@ export function ConvertersDialog() {
       setOriginal(source());
       refreshed(cat);
       const error = errorOf(id);
-      if (error) toast(`${id}.lua saved, but it does not load: ${error}`, 'warning');
-      else toast(`${id}.lua saved and reloaded`);
+      if (error) toast(t('converters.savedBroken', { file: `${id}.lua`, error }), 'warning');
+      else toast(t('converters.saved', { file: `${id}.lua` }));
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     } finally {
       setSaving(false);
     }
   };
   const create = async () => {
     const id = (newName() ?? '').trim();
-    if (!VALID_ID.test(id)) return toast('Use letters, digits, _ and - in the name.', 'warning');
-    if (entries().includes(id)) return toast(`${id}.lua already exists.`, 'warning');
-    if (dirty()) return toast('Save or revert the changes first.', 'warning');
+    if (!VALID_ID.test(id)) return toast(t('converters.badName'), 'warning');
+    if (entries().includes(id)) return toast(t('converters.exists', { file: `${id}.lua` }), 'warning');
+    if (dirty()) return toast(t('converters.saveFirst'), 'warning');
     try {
       refreshed(await api.saveConverter(id, app.catalog().template));
       setNewName(null);
       setOriginal('');
       await select(id);
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     }
   };
   const remove = async () => {
@@ -94,17 +98,17 @@ export function ConvertersDialog() {
       setSelected(null);
       await select(entries()[0] ?? null);
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     }
   };
   const reload = async () => {
-    if (dirty()) return toast('Save or revert the changes first.', 'warning');
+    if (dirty()) return toast(t('converters.saveFirst'), 'warning');
     try {
       refreshed(await api.converters(true));
       await select(selected());
-      toast('Converters reloaded');
+      toast(t('converters.reloaded'));
     } catch (err) {
-      toast(String(err), 'danger');
+      toast(errorText(err), 'danger');
     }
   };
   /** Tab indenta (2 espaços) em vez de sair do campo; ⌘S/Ctrl+S salva. */
@@ -120,7 +124,7 @@ export function ConvertersDialog() {
     }
   };
   const close = () => {
-    if (dirty()) return toast('Save or revert the changes first.', 'warning');
+    if (dirty()) return toast(t('converters.saveFirst'), 'warning');
     app.setDialog(null);
   };
 
@@ -129,13 +133,13 @@ export function ConvertersDialog() {
       open={app.dialog() === 'converters'}
       onOpen={onOpen}
       onClose={() => app.setDialog(null)}
-      onCancel={(e) => dirty() && (e.preventDefault(), toast('Save or revert the changes first.', 'warning'))}
+      onCancel={(e) => dirty() && (e.preventDefault(), toast(t('converters.saveFirst'), 'warning'))}
       labelledBy="converters-title"
       class="converters-dialog"
     >
       <div class="dialog-head">
         <h2 class="dialog-title" id="converters-title">
-          Converters
+          {t('converters.title')}
         </h2>
         <span class="context" title={app.catalog().dir}>
           {app.catalog().dir}
@@ -143,8 +147,8 @@ export function ConvertersDialog() {
       </div>
       <div class="conv-body">
         <div class="conv-list">
-          <ul role="listbox" aria-label="Converters">
-            <For each={entries()} fallback={<li class="muted conv-empty">No converters yet</li>}>
+          <ul role="listbox" aria-label={t('converters.title')}>
+            <For each={entries()} fallback={<li class="muted conv-empty">{t('converters.empty')}</li>}>
               {(id) => (
                 <li
                   role="option"
@@ -156,7 +160,7 @@ export function ConvertersDialog() {
                 >
                   <span class="conv-name">{info(id)?.name ?? id}</span>
                   <span class="conv-meta">
-                    {errorOf(id) ? 'error' : `${info(id)?.registers} reg${(info(id)?.registers ?? 1) > 1 ? 's' : ''}${info(id)?.writable ? '' : ' · RO'}`}
+                    {errorOf(id) ? t('converters.error') : t('converters.meta', { n: info(id)?.registers ?? 1, writable: info(id)?.writable ?? false })}
                   </span>
                 </li>
               )}
@@ -167,14 +171,14 @@ export function ConvertersDialog() {
             fallback={
               <button class="btn outline small" type="button" onClick={() => setNewName('')}>
                 <Icon name="file-plus" />
-                New
+                {t('converters.new')}
               </button>
             }
           >
             <form class="conv-new" onSubmit={(e) => (e.preventDefault(), void create())}>
               <span class="input small">
                 <input
-                  aria-label="New converter name"
+                  aria-label={t('converters.newName')}
                   placeholder="file_name"
                   spellcheck={false}
                   autocomplete="off"
@@ -185,13 +189,13 @@ export function ConvertersDialog() {
                 />
               </span>
               <button class="btn primary small" type="submit">
-                Create
+                {t('converters.create')}
               </button>
             </form>
           </Show>
         </div>
         <div class="conv-editor">
-          <Show when={selected()} fallback={<p class="muted conv-empty">Select a converter or create a new one.</p>}>
+          <Show when={selected()} fallback={<p class="muted conv-empty">{t('converters.selectHint')}</p>}>
             {(id) => (
               <>
                 <div class="conv-file">
@@ -199,15 +203,15 @@ export function ConvertersDialog() {
                   <Show when={info(id())}>
                     {(c) => (
                       <span class="muted">
-                        {c().name} · {c().registers} register{c().registers > 1 ? 's' : ''} · {c().writable ? 'read/write' : 'read-only'}
+                        {t('converters.fileInfo', { name: c().name, n: c().registers, writable: c().writable })}
                       </span>
                     )}
                   </Show>
                   <Show when={dirty()}>
-                    <span class="conv-dirty">unsaved</span>
+                    <span class="conv-dirty">{t('converters.unsaved')}</span>
                   </Show>
                 </div>
-                <CodeEditor label={`Source of ${id()}.lua`} value={source()} onInput={setSource} onKeyDown={onKeyDown} />
+                <CodeEditor label={t('converters.source', { file: `${id()}.lua` })} value={source()} onInput={setSource} onKeyDown={onKeyDown} />
                 <Show when={errorOf(id())}>
                   {(message) => (
                     <p class="error conv-error" role="alert">
@@ -221,28 +225,28 @@ export function ConvertersDialog() {
         </div>
       </div>
       <div class="dialog-actions">
-        <button class="btn ghost" type="button" onClick={() => api.openConvertersDir().catch((err) => toast(String(err), 'danger'))}>
+        <button class="btn ghost" type="button" onClick={() => api.openConvertersDir().catch((err) => toast(errorText(err), 'danger'))}>
           <Icon name="folder-open" />
-          Open Folder
+          {t('converters.openFolder')}
         </button>
         <button class="btn ghost" type="button" onClick={reload}>
           <Icon name="refresh-cw" />
-          Reload
+          {t('converters.reload')}
         </button>
         <button class="btn ghost" classList={{ danger: confirmDelete() }} type="button" disabled={!selected()} onClick={remove}>
           <Icon name="x" />
-          {confirmDelete() ? 'Confirm delete' : 'Delete'}
+          {confirmDelete() ? t('converters.confirmDelete') : t('converters.delete')}
         </button>
         <span class="spacer" />
         <button class="btn outline" type="button" disabled={!dirty()} onClick={() => setSource(original())}>
-          Revert
+          {t('converters.revert')}
         </button>
         <button class="btn primary" classList={{ loading: saving() }} type="button" disabled={!selected() || !dirty()} onClick={save}>
           <Icon name="save" />
-          Save
+          {t('common.save')}
         </button>
         <button class="btn outline" type="button" onClick={close}>
-          Close
+          {t('common.close')}
         </button>
       </div>
     </Dialog>

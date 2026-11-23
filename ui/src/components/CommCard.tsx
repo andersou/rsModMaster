@@ -1,5 +1,6 @@
 import { Show } from 'solid-js';
 import { app, type Mode } from '../appStore';
+import { t } from '../i18n';
 import { TextField } from './Field';
 import { Icon } from './Icon';
 import { Segmented } from './Segmented';
@@ -22,13 +23,13 @@ export function CommCard() {
       <div class="card-head">
         <h2 class="section-title" id="comm-title">
           <Icon name="plug" />
-          Communication
+          {t('comm.title')}
         </h2>
-        <Segmented label="Modbus Mode" options={MODES} value={app.form.mode} disabled={locked()} onChange={(mode) => app.setForm('mode', mode)} />
+        <Segmented label={t('comm.mode')} options={MODES} value={app.form.mode} disabled={locked()} onChange={(mode) => app.setForm('mode', mode)} />
       </div>
       <div class="row">
         <TextField
-          label={app.form.mode === 'TCP' ? 'Unit ID' : 'Slave Addr'}
+          label={app.form.mode === 'TCP' ? t('comm.unitId') : t('comm.slaveAddr')}
           class="narrow"
           inputmode="numeric"
           value={app.form.slave}
@@ -37,7 +38,7 @@ export function CommCard() {
           onInput={(e) => app.setForm('slave', e.currentTarget.value)}
         />
         <TextField
-          label="Scan Rate (ms)"
+          label={t('comm.scanRate')}
           class="narrow"
           inputmode="numeric"
           value={app.form.scanRate}
@@ -47,7 +48,7 @@ export function CommCard() {
         />
       </div>
       <div class="row end nowrap">
-        <button class="target" type="button" title="Edit connection settings" onClick={() => app.setDialog('settings')}>
+        <button class="target" type="button" title={t('comm.editTarget')} onClick={() => app.setDialog('settings')}>
           <Icon name={app.form.mode === 'TCP' ? 'globe' : 'cable'} />
           <span>{target()}</span>
         </button>
@@ -56,13 +57,13 @@ export function CommCard() {
           fallback={
             <button class="btn primary large" classList={{ loading: app.busy() }} type="button" onClick={app.connect}>
               <Icon name="plug" />
-              Connect
+              {t('comm.connect')}
             </button>
           }
         >
           <button class="btn outline large" type="button" disabled={app.busy() && !app.scanning()} onClick={app.connect}>
             <Icon name="unplug" />
-            Disconnect
+            {t('comm.disconnect')}
           </button>
         </Show>
       </div>
