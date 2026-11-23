@@ -35,7 +35,7 @@ import type { Catalog, CoreEvent, Outcome, Request, Settings } from './lib/types
 import { toast } from './toasts';
 
 export type Mode = 'RTU' | 'TCP';
-export type DialogName = 'settings' | 'bus' | 'tools' | 'about' | 'converters';
+export type DialogName = 'settings' | 'tools' | 'about' | 'converters';
 
 export interface RawLine {
   type: 'Tx' | 'Rx';

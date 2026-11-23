@@ -18,6 +18,8 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
   byte do libmodbus (ABCD, DCBA, BADC, CDAB). O float ocupa dois registradores; o segundo mostra `—`.
 - **Scan** contínuo, com o intervalo do campo Scan Rate.
 - **Bus Monitor**: quadros Tx/Rx brutos e os campos ADU/PDU do quadro escolhido; dá para salvar em `.txt`.
+  Fica numa aba do painel de baixo (botão **Bus** na barra de status), não num diálogo: dá para ler,
+  escrever e escanear olhando os quadros.
 - **Sessões** (`.fmmsess`, e também `.ses`/`.ini`) e configurações persistidas no INI.
 
 - **Custom converters em Lua** (botão `{ }` na barra de título): um script transforma um ou mais
@@ -34,8 +36,8 @@ mesmo `fModMaster.ini` e as mesmas sessões `.fmmsess`.
 
 **Atalhos:** `⌘K` / `Ctrl+K` conecta ou desconecta; `⌘↩` / `Ctrl+Enter` lê ou escreve.
 
-**Log:** o botão **Log** na barra de status (ou o da barra de título) abre um painel por cima, como
-o console de devtools: conexões, erros de transação e mensagens dos converters desde que o app abriu,
+**Log:** o botão **Log** na barra de status (ou o da barra de título) abre a aba Log do painel de
+baixo, como o console de devtools: conexões, erros de transação e mensagens dos converters desde que o app abriu,
 com busca, filtro por nível (OR, como no garten-updater), copiar e exportar as linhas visíveis.
 O botão mostra um selo com os erros chegados com o painel fechado; o histórico completo fica no
 arquivo, aberto pelo ícone do painel.

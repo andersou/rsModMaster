@@ -1,5 +1,6 @@
 import { app } from '../appStore';
 import { logs } from '../logStore';
+import { panel } from '../panel';
 import { Icon } from './Icon';
 
 /** Conexão, Base Addr e contadores, como a barra de status do qModMaster. */
@@ -15,11 +16,21 @@ export function StatusBar() {
       <span class="spacer" />
       <button
         class="btn ghost small log-toggle"
-        classList={{ active: logs.open() }}
+        classList={{ active: panel.tab() === 'bus' }}
         type="button"
-        aria-pressed={logs.open()}
+        aria-pressed={panel.tab() === 'bus'}
+        onClick={() => panel.toggle('bus')}
+      >
+        <Icon name="activity" />
+        Bus
+      </button>
+      <button
+        class="btn ghost small log-toggle"
+        classList={{ active: panel.tab() === 'log' }}
+        type="button"
+        aria-pressed={panel.tab() === 'log'}
         aria-label={`Log${logs.unseen() ? ` (${logs.unseen()} new errors)` : ''}`}
-        onClick={() => logs.setOpen(!logs.open())}
+        onClick={() => panel.toggle('log')}
       >
         <Icon name="square-terminal" />
         Log

@@ -630,7 +630,6 @@ a:hover { color: var(--link-hover); }
 .port-row { display: flex; align-items: flex-end; gap: 8px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .hint-text { font-size: 12px; }
-.bus-dialog { width: min(980px, calc(100vw - 48px)); height: min(640px, calc(100vh - 96px)); }
 .bus-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
 .log-row.raw { cursor: pointer; }
 .log-row.raw:hover { background: var(--secondary); }
@@ -743,6 +742,12 @@ a:hover { color: var(--link-hover); }
 }
 .log-panel[hidden] { display: none; }
 .log-head { display: flex; align-items: center; gap: 8px; }
+.panel-tabs { display: flex; gap: 2px; }
+.panel-tabs button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; }
+.panel-tabs button:hover { color: var(--fg); background: var(--secondary-hover); }
+.panel-tabs button[aria-selected="true"] { color: var(--fg); background: var(--accent); border-color: var(--primary); }
+.tab-count { font: 11px var(--mono); color: var(--muted); }
+.log-panel .bus-body { flex: 1; min-height: 0; }
 .log-head .search { width: 240px; flex: none; }
 .log-sep { width: 1px; height: 20px; background: var(--border); }
 .levels { display: flex; gap: 2px; }

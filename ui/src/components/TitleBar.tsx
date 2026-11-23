@@ -1,5 +1,5 @@
 import { app } from '../appStore';
-import { logs } from '../logStore';
+import { panel } from '../panel';
 import { setThemePref, themePref } from '../theme';
 import { Segmented } from './Segmented';
 import { Icon } from './Icon';
@@ -26,10 +26,10 @@ export function TitleBar() {
         <Action icon="save" label="Save Session" onClick={app.saveSession} />
       </div>
       <div class="titlebar-group" role="group" aria-label="View">
-        <Action icon="activity" label="Bus Monitor" onClick={() => app.setDialog('bus')} />
+        <Action icon="activity" label="Bus Monitor" onClick={() => panel.toggle('bus')} />
         <Action icon="wrench" label="Tools" onClick={() => app.setDialog('tools')} />
         <Action icon="braces" label="Converters" onClick={() => app.setDialog('converters')} />
-        <Action icon="file-text" label="Log" onClick={() => logs.setOpen(!logs.open())} />
+        <Action icon="file-text" label="Log" onClick={() => panel.toggle('log')} />
         <Action icon="settings-2" label="Settings" onClick={() => app.setDialog('settings')} />
         <Action icon="info" label="About" onClick={() => app.setDialog('about')} />
       </div>

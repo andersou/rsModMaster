@@ -2,10 +2,9 @@ import { onCleanup, onMount, Show } from 'solid-js';
 import { api } from './api';
 import { app } from './appStore';
 import { AboutDialog } from './components/AboutDialog';
-import { BusMonitorDialog } from './components/BusMonitorDialog';
 import { CommCard } from './components/CommCard';
 import { ConvertersDialog } from './components/ConvertersDialog';
-import { LogPanel } from './components/LogPanel';
+import { BottomPanel } from './components/BottomPanel';
 import { RegistersCard } from './components/RegistersCard';
 import { RequestCard } from './components/RequestCard';
 import { SettingsDialog } from './components/SettingsDialog';
@@ -65,11 +64,10 @@ export function App() {
         </main>
         <StatusBar />
         <SettingsDialog />
-        <BusMonitorDialog />
         <ToolsDialog />
         <AboutDialog />
         <ConvertersDialog />
-        <LogPanel />
+        <BottomPanel />
       </Show>
       <Toasts />
     </>
