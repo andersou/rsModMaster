@@ -5,7 +5,6 @@ import { t } from '../i18n';
 import { panel } from '../panel';
 import { setThemePref, themePref } from '../theme';
 import { updates } from '../updates';
-import { Segmented } from './Segmented';
 import { Icon } from './Icon';
 import { LanguageMenu } from './LanguageMenu';
 
@@ -13,6 +12,34 @@ function Action(props: { icon: string; label: string; disabled?: boolean; onClic
   return (
     <button class="btn ghost square" type="button" title={props.label} aria-label={props.label} disabled={props.disabled} onClick={() => props.onClick()}>
       <Icon name={props.icon} />
+    </button>
+  );
+}
+
+const THEMES = [
+  { value: 'system', icon: 'monitor', label: 'titlebar.themeSystem' },
+  { value: 'light', icon: 'sun', label: 'titlebar.themeLight' },
+  { value: 'dark', icon: 'moon', label: 'titlebar.themeDark' },
+] as const;
+
+/** Um botão que alterna sistema → claro → escuro. Os três ícones ficam sobrepostos e o CSS anima a
+ *  troca pelo `data-pref` (o que sai gira para um lado, o próximo entra pelo outro). */
+function ThemeButton() {
+  const index = () => THEMES.findIndex((theme) => theme.value === themePref());
+  const current = () => t(THEMES[index()].label);
+  const next = () => THEMES[(index() + 1) % THEMES.length];
+  return (
+    <button
+      class="btn ghost square theme-toggle"
+      type="button"
+      data-pref={themePref()}
+      title={t('titlebar.themeCycle', { current: current(), next: t(`titlebar.themeNames.${next().value}`) })}
+      aria-label={current()}
+      onClick={() => setThemePref(next().value)}
+    >
+      {THEMES.map((theme) => (
+        <Icon name={theme.icon} class={`theme-icon ${theme.value}`} />
+      ))}
     </button>
   );
 }
@@ -53,16 +80,7 @@ export function TitleBar() {
       </div>
       <div class="titlebar-group">
         <LanguageMenu />
-        <Segmented
-          label={t('titlebar.theme')}
-          value={themePref()}
-          onChange={setThemePref}
-          options={[
-            { value: 'system', label: <Icon name="monitor" />, title: t('titlebar.themeSystem') },
-            { value: 'light', label: <Icon name="sun" />, title: t('titlebar.themeLight') },
-            { value: 'dark', label: <Icon name="moon" />, title: t('titlebar.themeDark') },
-          ]}
-        />
+        <ThemeButton />
       </div>
     </header>
   );

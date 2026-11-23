@@ -29,6 +29,8 @@ export const en = {
     themeSystem: 'Theme: follow the system',
     themeLight: 'Theme: light',
     themeDark: 'Theme: dark',
+    themeCycle: '{{ current }} · click for {{ next }}',
+    themeNames: { system: 'system', light: 'light', dark: 'dark' },
   },
   status: {
     connected: 'Connected ({{ target }})',

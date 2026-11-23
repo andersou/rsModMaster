@@ -722,6 +722,17 @@ a:hover { color: var(--link-hover); }
 .legend-item:hover { background: var(--secondary-hover); }
 .legend-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .legend-value { flex: none; font: 12px var(--mono); }
+/* tema: o ícone atual no lugar; o próximo do ciclo espera girado para um lado, o anterior sai
+   para o outro (sistema → claro → escuro) */
+.theme-toggle { position: relative; overflow: hidden; }
+.theme-toggle .theme-icon { position: absolute; inset: 0; margin: auto; opacity: 0; transform: rotate(-90deg) scale(.4); transition: transform .4s cubic-bezier(.34, 1.4, .64, 1), opacity .25s ease; }
+.theme-toggle[data-pref="system"] .theme-icon.dark,
+.theme-toggle[data-pref="light"] .theme-icon.system,
+.theme-toggle[data-pref="dark"] .theme-icon.light { transform: rotate(90deg) scale(.4); }
+.theme-toggle[data-pref="system"] .theme-icon.system,
+.theme-toggle[data-pref="light"] .theme-icon.light,
+.theme-toggle[data-pref="dark"] .theme-icon.dark { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .theme-toggle .theme-icon { transition: none; } }
 /* bandeira do idioma: borda fina para a faixa branca dos EUA no tema claro */
 .flag { width: 20px; height: 14px; flex: none; border-radius: 2px; box-shadow: 0 0 0 1px var(--border); }
 .lang-menu { min-width: 160px; }

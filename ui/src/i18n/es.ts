@@ -28,6 +28,8 @@ export const es: Dict = {
     themeSystem: 'Tema: seguir el sistema',
     themeLight: 'Tema: claro',
     themeDark: 'Tema: oscuro',
+    themeCycle: '{{ current }} · clic para {{ next }}',
+    themeNames: { system: 'sistema', light: 'claro', dark: 'oscuro' },
   },
   status: {
     connected: 'Conectado ({{ target }})',
