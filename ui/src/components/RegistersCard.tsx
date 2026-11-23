@@ -64,8 +64,13 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
       style={{ left: `${Math.min(props.menu.x, innerWidth - 240)}px`, top: `${Math.max(8, Math.min(props.menu.y, innerHeight - 440))}px` }}
     >
       <div class="menu-title">
-        <span>Register {props.menu.address}</span>
-        <span class="menu-state">{state()}</span>
+        <span class="menu-register">
+          Register {props.menu.address} · 0x{props.menu.address.toString(16).toUpperCase().padStart(4, '0')}
+        </span>
+        {/* o formato atual já vem marcado na lista; só a 2ª metade de float não tem o que marcar */}
+        <Show when={current().floatOwner !== null}>
+          <span class="menu-state">{state()}</span>
+        </Show>
       </div>
       {/* nome do registrador: tooltip, legenda do gráfico */}
       <span class="input small menu-label">
@@ -179,11 +184,11 @@ function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) =
   const text = () => app.cellText(props.cell);
   const binary = () => props.cell.base === 'bin' && !bits() && props.cell.hasValue;
   const invalid = () => app.invalidCell() === props.cell.address || !inputValid(props.cell, text(), bits(), signed());
-  /** faixa da cor da série (registrador no gráfico), somada à borda de formato próprio */
+  /** faixa da cor da série (registrador no gráfico) */
   const marker = () => {
     const slot = props.cell.kind === 'value' ? app.charted().get(props.cell.address) : undefined;
     if (slot === undefined) return undefined;
-    return `inset 3px 0 0 var(--series-${slot + 1})${props.cell.overridden ? ', inset 0 0 0 1px var(--primary)' : ''}`;
+    return `inset 3px 0 0 var(--series-${slot + 1})`;
   };
   return (
     <td

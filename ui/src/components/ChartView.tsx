@@ -67,10 +67,11 @@ export function ChartView() {
         scales: {
           x: {
             time: true,
-            // ao vivo: a janela termina no instante mais recente
+            // ao vivo: a janela começa na primeira amostra até se encher e depois acompanha o fim
             range: (_u, min, max) => {
               const ms = windowMs();
-              return live() && ms !== null && max !== null ? [max - ms, max] : [min, max];
+              if (!live() || ms === null || min === null || max === null) return [min, max];
+              return max - min < ms ? [min, min + ms] : [max - ms, max];
             },
           },
           y: bits() ? { range: () => [-0.2, Math.max(lanes, 1)] } : { auto: true },
