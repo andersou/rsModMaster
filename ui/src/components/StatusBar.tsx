@@ -15,32 +15,34 @@ export function StatusBar() {
       <span>{t('status.packets', { n: app.counters().packets })}</span>
       <span classList={{ 'has-errors': app.counters().errors > 0 }}>{t('status.errors', { n: app.counters().errors })}</span>
       <span class="spacer" />
-      <button
-        class="btn ghost small log-toggle"
-        classList={{ active: panel.tab() === 'bus' }}
-        type="button"
-        aria-pressed={panel.tab() === 'bus'}
-        onClick={() => panel.toggle('bus')}
-      >
-        <Icon name="activity" />
-        {t('status.bus')}
-      </button>
-      <button
-        class="btn ghost small log-toggle"
-        classList={{ active: panel.tab() === 'log' }}
-        type="button"
-        aria-pressed={panel.tab() === 'log'}
-        aria-label={logs.unseen() ? t('status.logUnseen', { n: logs.unseen() }) : t('status.log')}
-        onClick={() => panel.toggle('log')}
-      >
-        <Icon name="square-terminal" />
-        {t('status.log')}
-        {logs.unseen() > 0 && <span class="badge">{logs.unseen()}</span>}
-      </button>
-      <button class="btn ghost small" type="button" onClick={app.resetCounters}>
-        <Icon name="rotate-ccw" />
-        {t('status.resetCounters')}
-      </button>
+      <div class="statusbar-actions">
+        <button
+          class="btn ghost small log-toggle"
+          classList={{ active: panel.tab() === 'bus' }}
+          type="button"
+          aria-pressed={panel.tab() === 'bus'}
+          onClick={() => panel.toggle('bus')}
+        >
+          <Icon name="activity" />
+          {t('status.bus')}
+        </button>
+        <button
+          class="btn ghost small log-toggle"
+          classList={{ active: panel.tab() === 'log' }}
+          type="button"
+          aria-pressed={panel.tab() === 'log'}
+          aria-label={logs.unseen() ? t('status.logUnseen', { n: logs.unseen() }) : t('status.log')}
+          onClick={() => panel.toggle('log')}
+        >
+          <Icon name="square-terminal" />
+          {t('status.log')}
+          {logs.unseen() > 0 && <span class="badge">{logs.unseen()}</span>}
+        </button>
+        <button class="btn ghost small" type="button" onClick={app.resetCounters}>
+          <Icon name="rotate-ccw" />
+          {t('status.resetCounters')}
+        </button>
+      </div>
     </footer>
   );
 }
