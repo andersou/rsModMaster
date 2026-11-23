@@ -72,8 +72,8 @@ export const en = {
     f06: 'Write Single Register',
     f0f: 'Write Multiple Coils',
     f10: 'Write Multiple Registers',
-    coils: 'Number of Coils',
-    registers: 'Number of Registers',
+    coils: 'Quantity',
+    registers: 'Quantity',
   },
   registers: {
     title: 'Registers',

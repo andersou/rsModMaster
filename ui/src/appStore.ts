@@ -470,7 +470,11 @@ export const app = {
   singleRegisterWrite,
   cellText,
   invalidCell,
-  setEdit: (address: number, text: string) => setEdits(address, text),
+  setEdit: (address: number, text: string) => {
+    // o vermelho do erro de escrita sai assim que o valor é corrigido
+    if (invalidCell() === address) setInvalidCell(null);
+    setEdits(address, text);
+  },
   raw,
   clearRaw: () => setRaw([]),
   dialog,
