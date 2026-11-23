@@ -547,10 +547,11 @@ a:hover { color: var(--link-hover); }
   font-weight: 500;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  border-right: 1px solid var(--border);
 }
 .grid tbody th { left: 0; top: auto; z-index: 0; border-bottom: 0; border-right: 1px solid var(--border); text-align: right; }
 .grid th.corner { left: 0; z-index: 2; }
-.cell { height: 36px; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--muted-bg); white-space: nowrap; }
+.cell { height: 36px; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); white-space: nowrap; }
 .grid.write .cell { padding: 2px 4px; }
 .cell.unused { color: var(--border); background: repeating-linear-gradient(135deg, transparent 0 6px, var(--stripe) 6px 12px); }
 .cell.continuation { color: var(--muted); }
