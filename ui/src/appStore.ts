@@ -30,6 +30,7 @@ import {
   validateFormat,
 } from './lib/registers';
 import { type ChartData, dropColumn, emptyChart, fillSample, freeSlot, pushSample, resetColumn, type WindowKey, WINDOWS } from './lib/chart';
+import { field, frameRegisters, type FrameRegisters } from './lib/bus';
 import { convertAddress, type FormErrors, parseAddress, validateForm } from './lib/form';
 import type { Catalog, CoreEvent, Outcome, Request, Settings } from './lib/types';
 import { errorText, t } from './i18n';
@@ -45,6 +46,8 @@ export interface RawLine {
   hex: string;
   /** campos decodificados pelo core: chave (rótulo em `bus.fields`) e valor */
   fields: [string, string][];
+  /** registradores dos `values` com os formatos da tabela na chegada (o modo Custom usa estes) */
+  regs: FrameRegisters | null;
 }
 
 const int = (raw: string | number, fallback: number) => {
@@ -379,11 +382,22 @@ function apply(outcome: Outcome, fromScan = false) {
   if (fromScan) lastScanError = error;
 }
 
+/** Endereço (do protocolo) do último pedido: a resposta de uma leitura não traz o seu. */
+let lastTxStart: number | undefined;
+
 function onCoreEvents(events: CoreEvent[]) {
   const lines: RawLine[] = [];
   for (const event of events) {
-    if (event.kind === 'raw') lines.push({ type: event.tx ? 'Tx' : 'Rx', at: event.at, mode: event.mode, hex: event.hex, fields: event.fields });
-    else if (scanning()) apply(event, true);
+    if (event.kind === 'raw') {
+      const own = field(event.fields, 'start');
+      const start = own !== undefined ? Number(own) : event.tx ? undefined : lastTxStart;
+      if (event.tx) lastTxStart = start;
+      // formatos de agora, sem valores: o quadro guarda os seus para o histórico não mudar depois
+      const { values: _v, valid: _ok, converted: _c, start: _s, count: _n, ...format } = grid();
+      const address = start === undefined ? undefined : start + int(settings.baseAddr, 0);
+      const regs = frameRegisters(event.fields, address, format);
+      lines.push({ type: event.tx ? 'Tx' : 'Rx', at: event.at, mode: event.mode, hex: event.hex, fields: event.fields, regs });
+    } else if (scanning()) apply(event, true);
   }
   if (lines.length) setRaw((list) => [...list, ...lines].slice(-maxLines()));
 }

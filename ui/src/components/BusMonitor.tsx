@@ -1,13 +1,19 @@
-import { createEffect, createSignal, For, on, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, For, type JSX, on, onMount, Show } from 'solid-js';
 import { api } from '../api';
 import { app, type RawLine } from '../appStore';
 import { errorText, t, tk } from '../i18n';
+import { customRows, field, frameValues, functionText, type ValueMode, valuesText } from '../lib/bus';
+import type { Converted } from '../lib/registers';
 import { localIso } from '../lib/time';
 import { toast } from '../toasts';
 import { Icon } from './Icon';
+import { Segmented } from './Segmented';
 
 const lineText = (line: RawLine) => `${line.type} ${localIso(line.at)} ${line.mode} ${line.hex}`;
 const [selected, setSelected] = createSignal<RawLine | null>(null);
+const [valueMode, setValueMode] = createSignal<ValueMode>('custom');
+/** decode dos converters do quadro escolhido (só ele: o Lua roda no core, sob demanda) */
+const [decoded, setDecoded] = createSignal<{ line: RawLine; converted: Record<number, Converted> } | null>(null);
 
 /** Quantidade, salvar e limpar, no cabeçalho do painel. */
 export function BusTools() {
@@ -22,6 +28,17 @@ export function BusTools() {
   };
   return (
     <>
+      <Segmented
+        label={t('bus.valuesFormat')}
+        value={valueMode()}
+        onChange={setValueMode}
+        options={[
+          { value: 'dec', label: 'Dec', title: t('bus.valuesDec') },
+          { value: 'hex', label: 'Hex', title: t('bus.valuesHex') },
+          { value: 'custom', label: 'Custom', title: t('bus.valuesCustom') },
+        ]}
+      />
+      <span class="log-sep" />
       <span class="context">{t('bus.count', { n: app.raw().length })}</span>
       <span class="log-sep" />
       <button class="btn ghost small square" type="button" title={t('bus.save')} aria-label={t('bus.saveLabel')} disabled={!app.raw().length} onClick={save}>
@@ -55,12 +72,42 @@ export function BusView() {
       if (list && list.scrollHeight - list.scrollTop - list.clientHeight < 48) queueMicrotask(() => (list.scrollTop = list.scrollHeight));
     }),
   );
-  const detail = () => {
+  // Custom com converter: decodifica os registradores do quadro escolhido, com os converters dele
+  createEffect(
+    on([selected, valueMode], async ([line, mode]) => {
+      const text = line && field(line.fields, 'values');
+      if (!line?.regs || !text || mode !== 'custom') return;
+      const values = frameValues(text);
+      const { start, format } = line.regs;
+      const items = customRows(values, line.regs)
+        .filter((c) => c.converter !== undefined && format.sizes?.[c.converter] !== undefined)
+        .map((c) => ({ address: c.address, id: c.converter!, regs: values.slice(c.address - start, c.address - start + format.sizes![c.converter!]) }))
+        .filter((item) => item.regs.length === format.sizes![item.id]);
+      if (!items.length) return;
+      try {
+        const results = await api.convertDecode(items.map(({ id, regs }) => ({ id, regs })));
+        setDecoded({ line, converted: Object.fromEntries(items.map((item, i) => [item.address, results[i]])) });
+      } catch (err) {
+        toast(errorText(err), 'danger');
+      }
+    }),
+  );
+  const detail = (): [string, JSX.Element][] | null => {
     const line = selected();
-    if (!line) return t('bus.select');
-    const fields: [string, string][] = [[t('bus.type'), line.type], [t('bus.timestamp'), localIso(line.at)], [t('bus.mode'), line.mode]];
-    for (const [key, value] of line.fields) fields.push([tk(`bus.fields.${key}`) ?? key, value]);
-    return fields.map(([label, value]) => `${label}: ${value}`).join('\n');
+    if (!line) return null;
+    // Tx/Rx na cor da lista de quadros
+    const type = (
+      <>
+        <span class={`frame-dir ${line.type.toLowerCase()}`}>{line.type}</span> ({t(line.type === 'Tx' ? 'bus.request' : 'bus.response')})
+      </>
+    );
+    const fields: [string, JSX.Element][] = [[t('bus.type'), type], [t('bus.timestamp'), localIso(line.at)], [t('bus.mode'), line.mode]];
+    const converted = decoded()?.line === line ? decoded()!.converted : undefined;
+    for (const [key, value] of line.fields) {
+      const text = key === 'function' ? functionText(value) : key === 'values' ? valuesText(frameValues(value), valueMode(), line.regs, converted) : value;
+      fields.push([tk(`bus.fields.${key}`) ?? key, text]);
+    }
+    return fields;
   };
   return (
     <div class="bus-body">
@@ -91,7 +138,9 @@ export function BusView() {
         </Show>
       </div>
       <pre class="frame-detail" aria-label="ADU / PDU">
-        {detail()}
+        <Show when={detail()} fallback={t('bus.select')}>
+          {(fields) => <For each={fields()}>{([label, value]) => <div><span class="frame-key">{label}:</span> {value}</div>}</For>}
+        </Show>
       </pre>
     </div>
   );

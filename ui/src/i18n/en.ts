@@ -176,6 +176,13 @@ export const en = {
     type: 'Type',
     timestamp: 'Timestamp',
     mode: 'Mode',
+    request: 'request',
+    response: 'response',
+    exception: 'exception',
+    valuesFormat: 'Format of the values',
+    valuesDec: 'Values in decimal',
+    valuesHex: 'Values in hexadecimal',
+    valuesCustom: 'Values as the table showed them when the frame arrived: format, float, signed and converters per address',
     fields: {
       unparseable: 'Unparseable ADU (too short)',
       transaction: 'Transaction ID',

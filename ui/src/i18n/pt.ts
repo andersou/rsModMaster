@@ -174,6 +174,13 @@ export const pt: Dict = {
     type: 'Tipo',
     timestamp: 'Horário',
     mode: 'Modo',
+    request: 'pedido',
+    response: 'resposta',
+    exception: 'exceção',
+    valuesFormat: 'Formato dos valores',
+    valuesDec: 'Valores em decimal',
+    valuesHex: 'Valores em hexadecimal',
+    valuesCustom: 'Valores como a tabela os mostrava quando o quadro chegou: formato, float, sinal e converters por endereço',
     fields: {
       unparseable: 'ADU ilegível (curta demais)',
       transaction: 'ID da transação',

@@ -635,11 +635,13 @@ a:hover { color: var(--link-hover); }
 .hint-text { font-size: 12px; }
 .bus-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 12px; }
 .log-row.raw { cursor: pointer; }
+.frame-key, .frame-dir { font-weight: 600; }
+.frame-key { color: var(--primary); }
 .log-row.raw:hover { background: var(--secondary); }
 .log-row.raw[aria-selected="true"] { background: var(--list-active); }
 .log-row .dir { flex: none; width: 20px; font-weight: 600; }
-.log-row.tx .dir { color: var(--info); }
-.log-row.rx .dir { color: var(--success); }
+.log-row.tx .dir, .frame-dir.tx { color: var(--info); }
+.log-row.rx .dir, .frame-dir.rx { color: var(--success); }
 .frame-detail, .tool-output {
   margin: 0;
   padding: 12px;
