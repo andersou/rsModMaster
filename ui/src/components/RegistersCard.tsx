@@ -1,10 +1,12 @@
 import { createSignal, For, Index, onCleanup, onMount, Show } from 'solid-js';
+import { Portal } from 'solid-js/web';
 import { app } from '../appStore';
 import { t } from '../i18n';
-import { BASE_LABELS, type Base, type Cell, ENDIAN_LABELS, toEndian, type Endian, formatAddress, GRID_WIDTH, inputValid, maxLength } from '../lib/registers';
+import { BASE_LABELS, type Base, type Cell, type Endian, FORMAT_OPTIONS, formatAddress, GRID_WIDTH, inputValid, maxLength, toEndian } from '../lib/registers';
 import { shortcut } from '../platform';
 import { ChartView } from './ChartView';
 import { Icon } from './Icon';
+import { Popup, popupBelow } from './Popup';
 import { Segmented } from './Segmented';
 
 const COLUMNS = Array.from({ length: GRID_WIDTH }, (_, i) => String(i).padStart(2, '0'));
@@ -20,18 +22,13 @@ interface Menu {
 /** Formato de um endereço pelo botão direito, como o menu de contexto do fModMaster. */
 /** Nome do formato padrão da tabela, para o "Reset to default". */
 const defaultLabel = () => {
-  const [kind, arg] = app.defaultFormat().split(':');
-  if (kind === 'conv') return app.catalog().converters.find((c) => c.id === arg)?.name ?? arg;
-  if (kind === 'float') return t('request.float', { order: ENDIAN_LABELS[Number(arg)] });
-  return BASE_LABELS[kind as Base];
+  const value = app.defaultFormat();
+  if (value.startsWith('conv:')) return app.catalog().converters.find((c) => `conv:${c.id}` === value)?.name ?? value.slice(5);
+  return FORMAT_OPTIONS.find((o) => o.value === value)?.label() ?? value;
 };
 
-const MENU_ITEMS: { label: () => string; base: Base; endian?: Endian }[] = [
-  { label: () => 'Dec', base: 'dec' },
-  { label: () => 'Bin', base: 'bin' },
-  { label: () => 'Hex', base: 'hex' },
-  ...ENDIAN_LABELS.map((order, i) => ({ label: () => t('request.float', { order }), base: 'float' as Base, endian: i as Endian })),
-];
+/** os mesmos formatos do Default Format */
+const MENU_ITEMS = FORMAT_OPTIONS;
 
 /** Formato de um endereço pelo botão direito, como o menu de contexto do fModMaster; o formato em
  *  vigor vem marcado. */
@@ -192,10 +189,9 @@ function FormatMenu(props: { menu: Menu; onClose: () => void }) {
 
 function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) => void }) {
   const bits = () => app.spec().bits;
-  const signed = () => app.grid().signed;
   const text = () => app.cellText(props.cell);
   const binary = () => props.cell.base === 'bin' && !bits() && props.cell.hasValue;
-  const invalid = () => app.invalidCell() === props.cell.address || !inputValid(props.cell, text(), bits(), signed());
+  const invalid = () => app.invalidCell() === props.cell.address || !inputValid(props.cell, text(), bits());
   /** faixa da cor da série (registrador no gráfico) */
   const marker = () => {
     const slot = props.cell.kind === 'value' ? app.charted().get(props.cell.address) : undefined;
@@ -220,13 +216,64 @@ function CellView(props: { cell: Cell; onMenu: (event: MouseEvent, cell: Cell) =
           classList={{ invalid: invalid() }}
           spellcheck={false}
           autocomplete="off"
-          maxLength={props.cell.converter ? 64 : maxLength(props.cell.base, bits(), signed())}
+          maxLength={props.cell.converter ? 64 : maxLength(props.cell.base, bits())}
           value={text()}
           disabled={app.scanning()}
           onInput={(e) => app.setEdit(props.cell.address, e.currentTarget.value)}
         />
       </Show>
     </td>
+  );
+}
+
+/** Clear Table | ▾: o menu tem o Clear Formats (o que é mais raro e apaga a configuração fica escondido). */
+function ClearButton() {
+  let more!: HTMLButtonElement;
+  const [pos, setPos] = createSignal<{ right: number; top: number } | null>(null);
+  const close = () => {
+    setPos(null);
+    more.focus();
+  };
+  return (
+    <div class="split">
+      <button class="btn outline" type="button" disabled={app.scanning()} onClick={app.clearTable}>
+        <Icon name="eraser" />
+        {t('registers.clearTable')}
+      </button>
+      <button
+        ref={more}
+        class="btn outline square"
+        type="button"
+        title={t('registers.clearOptions')}
+        aria-label={t('registers.clearOptions')}
+        aria-haspopup="menu"
+        aria-expanded={pos() !== null}
+        onClick={() => setPos(pos() ? null : popupBelow(more))}
+      >
+        <Icon name="chevron-down" />
+      </button>
+      <Show when={pos()}>
+        {(p) => (
+          <Portal>
+            <Popup pos={p()} anchor={more} label={t('registers.clearOptions')} onClose={close}>
+              <button
+                role="menuitem"
+                type="button"
+                disabled={app.scanning() || !app.hasFormats()}
+                title={t('registers.clearFormatsHint')}
+                onClick={() => {
+                  app.clearFormats();
+                  close();
+                }}
+              >
+                <Icon name="eraser" class="menu-check visible" />
+                {t('registers.clearFormats')}
+              </button>
+            </Popup>
+          </Portal>
+        )}
+      </Show>
+    </div>
   );
 }
 
@@ -271,11 +318,17 @@ export function RegistersCard() {
           <Icon name={app.scanning() ? 'square' : 'refresh-cw'} />
           {app.scanning() ? t('registers.stop') : t('registers.scan')}
         </button>
-        <Show when={!chartView()}>
-          <button class="btn ghost" type="button" disabled={app.scanning()} onClick={app.clearTable}>
-            <Icon name="eraser" />
-            {t('registers.clearTable')}
-          </button>
+        {/* no mesmo lugar nas duas visões: trocar de aba não mexe no cabeçalho */}
+        <Show
+          when={!chartView()}
+          fallback={
+            <button class="btn outline" type="button" onClick={app.clearChart}>
+              <Icon name="eraser" />
+              {t('registers.clearSeries')}
+            </button>
+          }
+        >
+          <ClearButton />
         </Show>
       </div>
       <Show when={chartView()}>

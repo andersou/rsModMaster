@@ -62,7 +62,6 @@ export const es: Dict = {
     float: 'Float {{ order }}',
     isDefault: ' · predeterminado',
     converters: 'Converters',
-    signed: 'Con signo',
   },
   functions: {
     f01: 'Leer bobinas',
@@ -91,6 +90,11 @@ export const es: Dict = {
     scan: 'Scan',
     stop: 'Detener',
     clearTable: 'Limpiar tabla',
+    clearSeries: 'Limpiar series',
+    clearOptions: 'Más opciones de limpiar',
+    clearFormats: 'Limpiar formatos',
+    clearFormatsHint: 'Quita el formato, el orden de bytes del float y el converter de todos los registros (labels y gráfico se mantienen)',
+    formatsCleared: 'Formatos limpiados',
     address: 'Dirección: {{ address }}',
   },
   menu: {
@@ -135,6 +139,8 @@ export const es: Dict = {
     bus: 'Monitor del bus',
     close: 'Cerrar (Esc)',
     closeLabel: 'Cerrar el panel',
+    resize: 'Redimensionar el panel',
+    resizeHint: 'Arrastre para redimensionar · doble clic vuelve a la altura predeterminada',
   },
   log: {
     search: 'Buscar en el registro',
@@ -166,6 +172,8 @@ export const es: Dict = {
     saveLabel: 'Guardar las tramas',
     saveTitle: 'Guardar las tramas del monitor del bus',
     saved: 'Guardado en {{ path }}',
+    copy: 'Copiar las tramas',
+    copied: 'Tramas copiadas',
     clear: 'Limpiar las tramas',
     list: 'Tramas en bruto',
     emptyTitle: 'Todavía no hay tramas',

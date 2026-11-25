@@ -110,8 +110,11 @@ cargo test --workspace
   errado é **erro**, nunca padrões calados: o autosave gravaria os padrões por cima. O
   `load_settings` guarda o original como `settings.toml.bad`. `save` grava num `.tmp` e renomeia.
 - Não há leitura de INI (fModMaster, qModMaster): foi removida de propósito.
-- `defaultBase` é o índice do qModMaster (0 Hex, 1 Dec, 2 Bin, 3 Float); `format` em `[registers]` usa
-  outra codificação (2, 10, 16 e 3 = float).
+- `defaultBase` é o índice do qModMaster (0 Hex, 1 UInt16, 2 Bin, 3 Float) mais 4 = Int16; `format` em
+  `[registers]` usa outra codificação (10 UInt16, -10 Int16, 2, 16 e 3 = float). O sinal é do formato
+  (`Base` `int`), não uma opção à parte.
+- Formatos novos entram em `FORMAT_OPTIONS` (`ui/src/lib/registers.ts`): o Default Format e o menu de
+  contexto leem dali, para terem sempre as mesmas opções.
 - `functionCode` é o **índice** na lista `FUNCTIONS` (`ui/src/lib/registers.ts`), não o código da
   função. Não reordene a lista.
 - Tudo o que vem de arquivo passa por `validate` (id de converter, label de até 32 caracteres em

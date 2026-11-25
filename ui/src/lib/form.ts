@@ -23,7 +23,8 @@ const digits = (text: string) => /^\d+$/.test(text.trim());
 
 /** Endereço digitado em decimal ou hexadecimal; `null` se não for um número inteiro nessa base. */
 export function parseAddress(text: string, hex: boolean): number | null {
-  const t = text.trim();
+  // em Hex, o `0x` já aparece ao lado do campo; colado junto também vale
+  const t = hex ? text.trim().replace(/^0x/i, '') : text.trim();
   if (!(hex ? /^[0-9a-f]+$/i : /^\d+$/).test(t)) return null;
   return parseInt(t, hex ? 16 : 10);
 }

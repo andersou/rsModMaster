@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  baseFromFormat,
   baseFromSession,
+  baseToFormat,
   baseToSession,
+  FORMAT_OPTIONS,
   buildRows,
   collectWrite,
   editText,
@@ -26,7 +29,6 @@ const grid = (over: Partial<Grid>): Grid => ({
   count: 1,
   bits: false,
   write: false,
-  signed: false,
   defaultBase: 'dec',
   defaultEndian: 0,
   formats: {},
@@ -39,24 +41,35 @@ const texts = (g: Grid) => buildRows(g).flatMap((r) => r.cells.map((c) => c.text
 
 describe('formatos de 16 bits', () => {
   it('mostra hex, dec com e sem sinal e bin como o fModMaster', () => {
-    expect(formatValue(255, 'hex', false, false)).toBe('00ff');
-    expect(formatValue(-1, 'dec', false, true)).toBe('-1');
-    expect(formatValue(-1, 'dec', false, false)).toBe('65535');
-    expect(formatValue(5, 'bin', false, false)).toBe('0000000000000101');
-    expect(formatValue(1, 'bin', true, false)).toBe('1');
+    expect(formatValue(255, 'hex', false)).toBe('0x00FF');
+    expect(formatValue(-1, 'int', false)).toBe('-1');
+    expect(formatValue(-1, 'dec', false)).toBe('65535');
+    expect(formatValue(0x0513, 'bin', false)).toBe('00000101 00010011');
+    expect(formatValue(1, 'bin', true)).toBe('1');
+  });
+
+  it('Int16 e UInt16 por registrador, com os mesmos formatos do Default Format e do menu', () => {
+    const rows = buildRows(grid({ count: 2, values: [0xffff, 0xffff], formats: { 1: 'int' } }));
+    expect(rows[0].cells.slice(0, 2).map((c) => c.text)).toEqual(['65535', '-1']);
+    expect(rows[0].cells[1].num).toBe(-1);
+    expect(baseFromFormat(baseToFormat('int'))).toBe('int');
+    expect(FORMAT_OPTIONS.slice(0, 4).map((o) => o.label())).toEqual(['Int16', 'UInt16', 'Bin', 'Hex']);
   });
 
   it('lê o digitado dentro da faixa de cada formato', () => {
-    expect(parseValue('ffff', 'hex', false, false)).toBe(0xffff);
-    expect(parseValue('10000', 'hex', false, false)).toBeNull();
-    expect(parseValue('-1', 'dec', false, true)).toBe(0xffff); // vai ao escravo como u16
-    expect(parseValue('-1', 'dec', false, false)).toBeNull();
-    expect(parseValue('65536', 'dec', false, false)).toBeNull();
-    expect(parseValue('101', 'bin', false, false)).toBe(5);
-    expect(parseValue('2', 'bin', false, false)).toBeNull();
-    expect(parseValue('1', 'dec', true, false)).toBe(1);
-    expect(parseValue('2', 'dec', true, false)).toBeNull();
-    expect(parseValue('', 'dec', false, false)).toBeNull();
+    expect(parseValue('ffff', 'hex', false)).toBe(0xffff);
+    expect(parseValue('0x00FF', 'hex', false)).toBe(0xff);
+    expect(parseValue('0x', 'hex', false)).toBeNull();
+    expect(parseValue('10000', 'hex', false)).toBeNull();
+    expect(parseValue('-1', 'int', false)).toBe(0xffff); // vai ao escravo como u16
+    expect(parseValue('-1', 'dec', false)).toBeNull();
+    expect(parseValue('65536', 'dec', false)).toBeNull();
+    expect(parseValue('101', 'bin', false)).toBe(5);
+    expect(parseValue('00000101 00010011', 'bin', false)).toBe(0x0513);
+    expect(parseValue('2', 'bin', false)).toBeNull();
+    expect(parseValue('1', 'dec', true)).toBe(1);
+    expect(parseValue('2', 'dec', true)).toBeNull();
+    expect(parseValue('', 'dec', false)).toBeNull();
   });
 });
 
@@ -106,7 +119,7 @@ describe('grade', () => {
   it('um registrador só: uma célula, sem grade', () => {
     const rows = buildRows(grid({ start: 15, count: 1, values: [255], defaultBase: 'hex' }));
     expect(rows).toHaveLength(1);
-    expect(rows[0].cells.map((c) => c.text)).toEqual(['00ff']);
+    expect(rows[0].cells.map((c) => c.text)).toEqual(['0x00FF']);
   });
 
   it('erro mostra -/-; tabela limpa mostra -', () => {
@@ -145,27 +158,27 @@ describe('escrita', () => {
     const rows = buildRows(g);
     expect(hasFloat(rows)).toBe(true);
     const typed: Record<number, string> = { 0: '7', 1: '-12.5' };
-    expect(collectWrite(rows, (c) => typed[c.address] ?? editText(c), false, false)).toEqual({ values: [7, 0xc148, 0] });
+    expect(collectWrite(rows, (c) => typed[c.address] ?? editText(c), false)).toEqual({ values: [7, 0xc148, 0] });
   });
 
   it('escrita que começa na 2ª metade de um float é reconhecida (não pode deslocar os valores)', () => {
     const rows = buildRows(grid({ start: 10, count: 2, write: true, formats: { 9: 'float' }, values: [1, 2] }));
     expect(startsInsideFloat(rows)).toBe(true);
     // sem o bloqueio, sairia um valor a menos do que a quantidade pedida
-    expect(collectWrite(rows, editText, false, false)).toEqual({ values: [2] });
+    expect(collectWrite(rows, editText, false)).toEqual({ values: [2] });
     expect(startsInsideFloat(buildRows(grid({ start: 9, count: 2, write: true, formats: { 9: 'float' } })))).toBe(false);
   });
 
   it('o primeiro campo inválido é apontado', () => {
     const rows = buildRows(grid({ count: 2, write: true, defaultBase: 'hex', values: [1, 2] }));
-    expect(collectWrite(rows, (c) => (c.address === 1 ? 'zz' : editText(c)), false, false)).toEqual({ invalid: 1 });
+    expect(collectWrite(rows, (c) => (c.address === 1 ? 'zz' : editText(c)), false)).toEqual({ invalid: 1 });
   });
 
   it('sem valor lido o campo começa vazio e não fica vermelho', () => {
     const [cell] = buildRows(grid({ count: 1, write: true, valid: false }))[0].cells;
     expect(editText(cell)).toBe('');
-    expect(inputValid(cell, '', false, false)).toBe(true);
-    expect(inputValid(cell, 'x', false, false)).toBe(false);
+    expect(inputValid(cell, '', false)).toBe(true);
+    expect(inputValid(cell, 'x', false)).toBe(false);
   });
 
   it('formato por endereço não pode cobrir metade de float', () => {
@@ -177,7 +190,7 @@ describe('escrita', () => {
 
 describe('session', () => {
   it('Base da sessão no índice do qModMaster (Hex = 0 volta como Hex)', () => {
-    for (const b of ['bin', 'dec', 'hex', 'float'] as const) expect(baseFromSession(baseToSession(b))).toBe(b);
+    for (const b of ['int', 'bin', 'dec', 'hex', 'float'] as const) expect(baseFromSession(baseToSession(b))).toBe(b);
     expect(baseFromSession(16)).toBe('hex');
   });
 
@@ -225,8 +238,8 @@ describe('custom converters', () => {
 
   it('escrita usa o que o encode devolveu; sem encode o campo é inválido', () => {
     const rows = buildRows(conv({ write: true, converted: { 1: { value: '65538' } } }));
-    expect(collectWrite(rows, editText, false, false, { 1: [1, 2] })).toEqual({ values: [9, 1, 2, 7] });
-    expect(collectWrite(rows, editText, false, false, {})).toEqual({ invalid: 1 });
+    expect(collectWrite(rows, editText, false, { 1: [1, 2] })).toEqual({ values: [9, 1, 2, 7] });
+    expect(collectWrite(rows, editText, false, {})).toEqual({ invalid: 1 });
   });
 
   it('não sobrepõe floats, formatos nem outros converters', () => {
@@ -248,7 +261,7 @@ describe('converter como formato padrão', () => {
     expect(cells.map((c) => [c.kind, c.text])).toEqual([
       ['value', '1'],
       ['continuation', '—'],
-      ['value', '0002'],
+      ['value', '0x0002'],
       ['value', '12'],
       ['continuation', '—'],
     ]);

@@ -2,6 +2,7 @@ import { onCleanup, onMount, Show } from 'solid-js';
 import { app } from '../appStore';
 import { t } from '../i18n';
 import { logs } from '../logStore';
+import { clampHeight } from '../lib/panel';
 import { panel } from '../panel';
 import { BusTools, BusView } from './BusMonitor';
 import { Icon } from './Icon';
@@ -15,10 +16,40 @@ export function BottomPanel() {
   };
   onMount(() => document.addEventListener('keydown', onKey));
   onCleanup(() => document.removeEventListener('keydown', onKey));
+  // a borda de cima arrasta: a altura é o que sobra entre o ponteiro e a barra de status
+  const drag = (event: PointerEvent) => {
+    const handle = event.currentTarget as HTMLElement;
+    if (event.type === 'pointerdown') {
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+    } else if (handle.hasPointerCapture(event.pointerId)) {
+      const bottom = handle.parentElement!.getBoundingClientRect().bottom;
+      panel.setHeight(clampHeight(bottom - event.clientY, window.innerHeight));
+    }
+  };
+  const resizeKey = (event: KeyboardEvent) => {
+    const step = { ArrowUp: 24, ArrowDown: -24 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    const current = (event.currentTarget as HTMLElement).parentElement!.offsetHeight;
+    panel.setHeight(clampHeight(current + step, window.innerHeight));
+  };
   return (
     <Show when={panel.tab()}>
       {(tab) => (
-        <section class="log-panel" aria-label={t('panel.label')}>
+        <section class="log-panel" aria-label={t('panel.label')} style={{ height: panel.height() ? `${panel.height()}px` : undefined }}>
+          <div
+            class="panel-resize"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('panel.resize')}
+            title={t('panel.resizeHint')}
+            tabindex="0"
+            onPointerDown={drag}
+            onPointerMove={drag}
+            onDblClick={() => panel.setHeight(null)}
+            onKeyDown={resizeKey}
+          />
           <div class="log-head">
             <div class="panel-tabs" role="tablist" aria-label={t('panel.tabs')}>
               <button role="tab" type="button" aria-selected={tab() === 'log'} onClick={() => panel.open('log')}>

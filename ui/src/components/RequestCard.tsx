@@ -1,7 +1,7 @@
 import { For, Show } from 'solid-js';
 import { app } from '../appStore';
 import { t } from '../i18n';
-import { BASE_LABELS, type Base, ENDIAN_LABELS, FUNCTIONS, toEndian } from '../lib/registers';
+import { FORMAT_OPTIONS, FUNCTIONS, toEndian } from '../lib/registers';
 import { SelectField, TextField } from './Field';
 import { Icon } from './Icon';
 import { Segmented } from './Segmented';
@@ -10,9 +10,8 @@ const ADDRESS_BASES = [
   { value: 'dec', label: 'Dec' },
   { value: 'hex', label: 'Hex' },
 ] as const;
-const BASES: Base[] = ['dec', 'bin', 'hex'];
 
-/** Função, endereço inicial, quantidade e formato padrão da tabela. */
+/** Função e formato padrão da tabela; embaixo, endereço inicial e quantidade (rótulo à esquerda). */
 export function RequestCard() {
   const locked = () => app.scanning();
   return (
@@ -23,8 +22,8 @@ export function RequestCard() {
           {t('request.title')}
         </h2>
       </div>
-      <div class="row">
-        <SelectField label={t('request.functionCode')} class="grow" value={app.form.fn} disabled={locked()} onChange={(e) => app.setFunction(Number(e.currentTarget.value))}>
+      <div class="request-grid">
+        <SelectField label={t('request.functionCode')} value={app.form.fn} disabled={locked()} onChange={(e) => app.setFunction(Number(e.currentTarget.value))}>
           <For each={FUNCTIONS}>
             {(f) => (
               <option value={f.code}>
@@ -33,10 +32,41 @@ export function RequestCard() {
             )}
           </For>
         </SelectField>
-        <div class="field">
+        <SelectField
+          label={t('request.defaultFormat')}
+          value={app.defaultFormat()}
+          disabled={locked() || app.spec().bits}
+          onChange={(e) => app.setDefaultFormat(e.currentTarget.value)}
+        >
+          {/* os mesmos formatos do menu de contexto (FORMAT_OPTIONS) */}
+          <For each={FORMAT_OPTIONS}>
+            {(o) => (
+              <option value={o.value} disabled={o.base === 'float' && app.singleRegisterWrite()}>
+                {o.label()}
+                {o.base === 'float' && o.endian === toEndian(app.settings.floatEndian) ? t('request.isDefault') : ''}
+              </option>
+            )}
+          </For>
+          <Show when={app.catalog().converters.length}>
+            <optgroup label={t('request.converters')}>
+              <For each={app.catalog().converters}>
+                {(c) => (
+                  <option value={`conv:${c.id}`} disabled={c.registers > 1 && app.singleRegisterWrite()}>
+                    {c.name}
+                    {c.registers > 1 ? ` ×${c.registers}` : ''}
+                  </option>
+                )}
+              </For>
+            </optgroup>
+          </Show>
+        </SelectField>
+        <div class="field inline">
           <span class="label">{t('request.startAddress')}</span>
           <div class="addr" title={app.errors().start}>
             <span class="input" classList={{ invalid: Boolean(app.errors().start) }}>
+              <Show when={app.form.addrHex}>
+                <span class="input-prefix">0x</span>
+              </Show>
               <input
                 aria-label={t('request.startAddress')}
                 aria-invalid={Boolean(app.errors().start)}
@@ -58,49 +88,13 @@ export function RequestCard() {
         </div>
         <TextField
           label={app.spec().quantityLabel}
-          class="narrow"
+          class="inline"
           inputmode="numeric"
           value={app.form.qty}
           error={app.errors().qty}
           disabled={locked() || app.spec().max === 1}
           onInput={(e) => app.setForm('qty', e.currentTarget.value)}
         />
-        <SelectField
-          label={t('request.defaultFormat')}
-          class="format-field"
-          value={app.defaultFormat()}
-          disabled={locked() || app.spec().bits}
-          onChange={(e) => app.setDefaultFormat(e.currentTarget.value)}
-        >
-          {/* as mesmas opções do menu de contexto */}
-          <For each={BASES}>{(base) => <option value={base}>{BASE_LABELS[base]}</option>}</For>
-          <For each={ENDIAN_LABELS}>
-            {(label, i) => (
-              <option value={`float:${i()}`} disabled={app.singleRegisterWrite()}>
-                {t('request.float', { order: label })}
-                {i() === toEndian(app.settings.floatEndian) ? t('request.isDefault') : ''}
-              </option>
-            )}
-          </For>
-          <Show when={app.catalog().converters.length}>
-            <optgroup label={t('request.converters')}>
-              <For each={app.catalog().converters}>
-                {(c) => (
-                  <option value={`conv:${c.id}`} disabled={c.registers > 1 && app.singleRegisterWrite()}>
-                    {c.name}
-                    {c.registers > 1 ? ` ×${c.registers}` : ''}
-                  </option>
-                )}
-              </For>
-            </optgroup>
-          </Show>
-        </SelectField>
-        <Show when={app.form.format === 'dec' && !app.form.converter && !app.spec().bits}>
-          <label class="check signed">
-            <input type="checkbox" checked={app.form.signed} disabled={locked()} onChange={(e) => app.setForm('signed', e.currentTarget.checked)} />
-            {t('request.signed')}
-          </label>
-        </Show>
       </div>
     </section>
   );

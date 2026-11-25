@@ -52,14 +52,14 @@ describe('histórico do gráfico', () => {
 
 describe('valor numérico das células', () => {
   const grid = (over: Partial<Grid>): Grid => ({
-    start: 0, count: 3, bits: false, write: false, signed: false, defaultBase: 'dec', defaultEndian: 0,
+    start: 0, count: 3, bits: false, write: false, defaultBase: 'dec', defaultEndian: 0,
     formats: {}, endians: {}, values: [], valid: true, ...over,
   });
   const nums = (g: Grid) => buildRows(g)[0].cells.slice(0, g.count).map((c) => c.num);
 
   it('é o mesmo número em Dec, Hex e Bin; com sinal quando a tabela mostra com sinal', () => {
     expect(nums(grid({ values: [0xffff, 10, 255], formats: { 1: 'hex', 2: 'bin' } }))).toEqual([65535, 10, 255]);
-    expect(nums(grid({ values: [0xffff, 10, 255], signed: true }))).toEqual([-1, 10, 255]);
+    expect(nums(grid({ values: [0xffff, 10, 255], defaultBase: 'int' }))).toEqual([-1, 10, 255]);
   });
 
   it('float usa os dois registradores; continuação e erro não têm número', () => {

@@ -63,7 +63,6 @@ export const en = {
     float: 'Float {{ order }}',
     isDefault: ' · default',
     converters: 'Converters',
-    signed: 'Signed',
   },
   functions: {
     f01: 'Read Coils',
@@ -92,6 +91,11 @@ export const en = {
     scan: 'Scan',
     stop: 'Stop',
     clearTable: 'Clear Table',
+    clearSeries: 'Clear Series',
+    clearOptions: 'More clear options',
+    clearFormats: 'Clear Formats',
+    clearFormatsHint: 'Remove the format, float byte order and converter of every register (labels and chart stay)',
+    formatsCleared: 'Formats cleared',
     address: 'Address : {{ address }}',
   },
   menu: {
@@ -137,6 +141,8 @@ export const en = {
     bus: 'Bus Monitor',
     close: 'Close (Esc)',
     closeLabel: 'Close the panel',
+    resize: 'Resize the panel',
+    resizeHint: 'Drag to resize · double-click for the default height',
   },
   log: {
     search: 'Search the log',
@@ -168,6 +174,8 @@ export const en = {
     saveLabel: 'Save the frames',
     saveTitle: 'Save Bus Monitor Raw Data',
     saved: 'Saved to {{ path }}',
+    copy: 'Copy the frames',
+    copied: 'Frames copied',
     clear: 'Clear the frames',
     list: 'Raw frames',
     emptyTitle: 'No frames yet',

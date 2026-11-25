@@ -2,12 +2,43 @@ import { createEffect, createSignal, For, type JSX, on, onMount, Show } from 'so
 import { api } from '../api';
 import { app, type RawLine } from '../appStore';
 import { errorText, t, tk } from '../i18n';
-import { customRows, field, frameValues, functionText, type ValueMode, valuesText } from '../lib/bus';
+import { customRows, field, frameValues, functionText, type ValueEntry, valueEntries, type ValueMode } from '../lib/bus';
 import type { Converted } from '../lib/registers';
 import { localIso } from '../lib/time';
 import { toast } from '../toasts';
 import { Icon } from './Icon';
 import { Segmented } from './Segmented';
+
+/** Com endereço, um registrador por linha (endereço apagado à direita, valor normal); sem, em linha. */
+const valuesView = (entries: ValueEntry[]): JSX.Element =>
+  entries[0]?.address === undefined ? (
+    entries.map((e) => e.text).join(', ')
+  ) : (
+    <div class="frame-values">
+      <For each={entries}>
+        {(e) => (
+          <>
+            <span class="frame-addr">{e.address}</span>
+            <span>{e.text}</span>
+          </>
+        )}
+      </For>
+    </div>
+  );
+
+/** Dec | Hex | Custom, ao lado de "Values:" (os valores vêm nas linhas de baixo). */
+const valueModePicker = () => (
+  <Segmented
+    label={t('bus.valuesFormat')}
+    value={valueMode()}
+    onChange={setValueMode}
+    options={[
+      { value: 'dec', label: 'Dec', title: t('bus.valuesDec') },
+      { value: 'hex', label: 'Hex', title: t('bus.valuesHex') },
+      { value: 'custom', label: 'Custom', title: t('bus.valuesCustom') },
+    ]}
+  />
+);
 
 const lineText = (line: RawLine) => `${line.type} ${localIso(line.at)} ${line.mode} ${line.hex}`;
 const [selected, setSelected] = createSignal<RawLine | null>(null);
@@ -26,21 +57,18 @@ export function BusTools() {
       toast(errorText(err), 'danger');
     }
   };
+  const copy = () =>
+    navigator.clipboard.writeText(app.raw().map(lineText).join('\n')).then(
+      () => toast(t('bus.copied')),
+      (error) => toast(t('log.copyFailed', { error: String(error) }), 'danger'),
+    );
   return (
     <>
-      <Segmented
-        label={t('bus.valuesFormat')}
-        value={valueMode()}
-        onChange={setValueMode}
-        options={[
-          { value: 'dec', label: 'Dec', title: t('bus.valuesDec') },
-          { value: 'hex', label: 'Hex', title: t('bus.valuesHex') },
-          { value: 'custom', label: 'Custom', title: t('bus.valuesCustom') },
-        ]}
-      />
-      <span class="log-sep" />
       <span class="context">{t('bus.count', { n: app.raw().length })}</span>
       <span class="log-sep" />
+      <button class="btn ghost small square" type="button" title={t('bus.copy')} aria-label={t('bus.copy')} disabled={!app.raw().length} onClick={copy}>
+        <Icon name="copy" />
+      </button>
       <button class="btn ghost small square" type="button" title={t('bus.save')} aria-label={t('bus.saveLabel')} disabled={!app.raw().length} onClick={save}>
         <Icon name="download" />
       </button>
@@ -104,7 +132,14 @@ export function BusView() {
     const fields: [string, JSX.Element][] = [[t('bus.type'), type], [t('bus.timestamp'), localIso(line.at)], [t('bus.mode'), line.mode]];
     const converted = decoded()?.line === line ? decoded()!.converted : undefined;
     for (const [key, value] of line.fields) {
-      const text = key === 'function' ? functionText(value) : key === 'values' ? valuesText(frameValues(value), valueMode(), line.regs, converted) : value;
+      const text = key === 'function' ? functionText(value) : key === 'values' ? (
+          <>
+            {valueModePicker()}
+            {valuesView(valueEntries(frameValues(value), valueMode(), line.regs, converted))}
+          </>
+        ) : (
+          value
+        );
       fields.push([tk(`bus.fields.${key}`) ?? key, text]);
     }
     return fields;
@@ -137,11 +172,11 @@ export function BusView() {
           </div>
         </Show>
       </div>
-      <pre class="frame-detail" aria-label="ADU / PDU">
+      <div class="frame-detail" aria-label="ADU / PDU">
         <Show when={detail()} fallback={t('bus.select')}>
           {(fields) => <For each={fields()}>{([label, value]) => <div><span class="frame-key">{label}:</span> {value}</div>}</For>}
         </Show>
-      </pre>
+      </div>
     </div>
   );
 }

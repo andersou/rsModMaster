@@ -5,21 +5,37 @@
 import { errorText, t, tk } from '../i18n';
 import type { Msg } from './types';
 
-export type Base = 'bin' | 'dec' | 'hex' | 'float';
+/** `dec` = UInt16, `int` = Int16 (o sinal é do formato, não uma opção à parte). */
+export type Base = 'int' | 'dec' | 'bin' | 'hex' | 'float';
 /** Ordem dos bytes do float, como no libmodbus: 0 ABCD, 1 DCBA, 2 BADC, 3 CDAB. */
 export type Endian = 0 | 1 | 2 | 3;
 
 export const ENDIAN_LABELS = ['ABCD (BE_BE)', 'DCBA (LE_LE)', 'BADC (BE_LE)', 'CDAB (LE_BE)'] as const;
-export const BASE_LABELS: Record<Base, string> = { bin: 'Bin', dec: 'Dec', hex: 'Hex', float: 'Float' };
+export const BASE_LABELS: Record<Base, string> = { int: 'Int16', dec: 'UInt16', bin: 'Bin', hex: 'Hex', float: 'Float' };
 
-// Na sessão há duas codificações: `defaultBase` usa o índice do qModMaster; `format` em
-// `[registers]` usa o valor do enum do fModMaster (a base numérica, 3 = float).
-const SESSION_BASES: Record<number, Base> = { 0: 'hex', 1: 'dec', 2: 'bin', 3: 'float', 10: 'dec', 16: 'hex' };
+// Na sessão há duas codificações: `defaultBase` usa o índice do qModMaster (4 = Int16, nosso);
+// `format` em `[registers]` usa a base numérica do fModMaster (3 = float, -10 = Int16, nosso).
+const SESSION_BASES: Record<number, Base> = { 0: 'hex', 1: 'dec', 2: 'bin', 3: 'float', 4: 'int', 10: 'dec', 16: 'hex' };
 export const baseFromSession = (n: number): Base => SESSION_BASES[n] ?? 'dec';
-export const baseToSession = (b: Base): number => ({ hex: 0, dec: 1, bin: 2, float: 3 })[b];
-const FORMAT_BASES: Record<number, Base> = { 2: 'bin', 10: 'dec', 16: 'hex', 3: 'float' };
+export const baseToSession = (b: Base): number => ({ hex: 0, dec: 1, bin: 2, float: 3, int: 4 })[b];
+const FORMAT_BASES: Record<number, Base> = { 2: 'bin', 10: 'dec', [-10]: 'int', 16: 'hex', 3: 'float' };
 export const baseFromFormat = (n: number): Base | undefined => FORMAT_BASES[n];
-export const baseToFormat = (b: Base): number => ({ bin: 2, dec: 10, hex: 16, float: 3 })[b];
+export const baseToFormat = (b: Base): number => ({ bin: 2, dec: 10, int: -10, hex: 16, float: 3 })[b];
+
+/** Um formato de 16 bits; `value` é o do Default Format (`dec`, `float:2`...). */
+export interface FormatOption {
+  value: string;
+  base: Base;
+  endian?: Endian;
+  label: () => string;
+}
+
+/** Os formatos, na mesma ordem e com os mesmos nomes no Default Format e no menu de contexto (os
+ *  converters vêm depois, do catálogo). */
+export const FORMAT_OPTIONS: readonly FormatOption[] = [
+  ...(['int', 'dec', 'bin', 'hex'] as const).map((base) => ({ value: base, base, label: () => BASE_LABELS[base] })),
+  ...ENDIAN_LABELS.map((order, i) => ({ value: `float:${i}`, base: 'float' as const, endian: i as Endian, label: () => t('request.float', { order }) })),
+];
 export const toEndian = (n: number | undefined): Endian => (n === 1 || n === 2 || n === 3 ? n : 0);
 
 export interface FunctionSpec {
@@ -99,28 +115,34 @@ export function formatFloat(value: number): string {
 
 // ---- valores de 16 bits ----
 
-export function formatValue(value: number, base: Base, bits: boolean, signed: boolean): string {
+export function formatValue(value: number, base: Base, bits: boolean): string {
   const u = value & 0xffff;
   if (bits) return String(value ? 1 : 0);
   switch (base) {
-    case 'bin':
-      return u.toString(2).padStart(16, '0');
-    case 'hex':
-      return u.toString(16).padStart(4, '0');
-    default: // dec, e o float sem par (último registrador de uma quantidade ímpar)
-      return String(signed && base === 'dec' && u >= 0x8000 ? u - 0x10000 : u);
+    case 'bin': { // dois grupos de 8 bits: `00000101 00010011`
+      const bits16 = u.toString(2).padStart(16, '0');
+      return `${bits16.slice(0, 8)} ${bits16.slice(8)}`;
+    }
+    case 'hex': // sempre um short: `0x` e 4 dígitos maiúsculos
+      return `0x${u.toString(16).toUpperCase().padStart(4, '0')}`;
+    default: // int, dec, e o float sem par (último registrador de uma quantidade ímpar)
+      return String(base === 'int' && u >= 0x8000 ? u - 0x10000 : u);
   }
 }
 
 /** Valor digitado para escrever, já como u16; `null` se inválido. */
-export function parseValue(raw: string, base: Base, bits: boolean, signed: boolean): number | null {
+export function parseValue(raw: string, base: Base, bits: boolean): number | null {
   const text = raw.trim();
   if (bits) return text === '0' || text === '1' ? Number(text) : null;
-  if (base === 'bin') return /^[01]{1,16}$/.test(text) ? parseInt(text, 2) : null;
-  if (base === 'hex') return /^[0-9a-f]{1,4}$/i.test(text) ? parseInt(text, 16) : null;
+  if (base === 'bin') {
+    const digits = text.replace(/\s+/g, ''); // a célula mostra os grupos de 8 com espaço
+    return /^[01]{1,16}$/.test(digits) ? parseInt(digits, 2) : null;
+  }
+  // com ou sem `0x`: a célula mostra `0x00FF`, mas `ff` digitado continua valendo
+  if (base === 'hex') return /^(0x)?[0-9a-f]{1,4}$/i.test(text) ? parseInt(text.replace(/^0x/i, ''), 16) : null;
   if (!/^-?\d{1,6}$/.test(text)) return null;
   const n = Number(text);
-  const [lo, hi] = signed && base === 'dec' ? [-32768, 32767] : [0, 65535];
+  const [lo, hi] = base === 'int' ? [-32768, 32767] : [0, 65535];
   return n >= lo && n <= hi ? n & 0xffff : null;
 }
 
@@ -132,8 +154,8 @@ export function parseFloat32(raw: string): number | null {
   return Number.isFinite(n) && Math.abs(n) <= 3.4e38 ? n : null;
 }
 
-export const maxLength = (base: Base, bits: boolean, signed: boolean) =>
-  bits ? 1 : base === 'float' ? 20 : base === 'bin' ? 16 : base === 'hex' ? 4 : signed ? 6 : 5;
+export const maxLength = (base: Base, bits: boolean) =>
+  bits ? 1 : base === 'float' ? 20 : base === 'bin' ? 17 : base === 'hex' ? 6 : base === 'int' ? 6 : 5;
 
 // ---- grade ----
 
@@ -144,7 +166,6 @@ export interface Grid {
   count: number;
   bits: boolean;
   write: boolean;
-  signed: boolean;
   defaultBase: Base;
   defaultEndian: Endian;
   /** formato por endereço, quando difere do padrão */
@@ -293,9 +314,9 @@ export function buildRows(grid: Grid): Row[] {
       text = formatFloat(num);
       if (!Number.isFinite(num)) num = undefined;
     } else {
-      text = formatValue(value, base === 'float' ? 'dec' : base, grid.bits, grid.signed);
-      // o número é o mesmo em Bin/Dec/Hex; com sinal quando a tabela mostra com sinal
-      num = grid.bits ? (value ? 1 : 0) : grid.signed && value & 0x8000 ? (value & 0xffff) - 0x10000 : value & 0xffff;
+      text = formatValue(value, base === 'float' ? 'dec' : base, grid.bits);
+      // o número é o mesmo em Bin/Hex/UInt16; com sinal em Int16
+      num = grid.bits ? (value ? 1 : 0) : base === 'int' && value & 0x8000 ? (value & 0xffff) - 0x10000 : value & 0xffff;
     }
     used.set(address, {
       address,
@@ -366,7 +387,6 @@ export function collectWrite(
   rows: Row[],
   text: (cell: Cell) => string,
   bits: boolean,
-  signed: boolean,
   /** registradores já codificados pelo `encode` de cada converter, por endereço inicial */
   encoded: Record<number, number[]> = {},
 ): { values: number[] } | { invalid: number } {
@@ -384,7 +404,7 @@ export function collectWrite(
       if (parsed === null) return { invalid: cell.address };
       values.push(...floatToRegs(parsed, cell.endian));
     } else {
-      const parsed = parseValue(text(cell), cell.base, bits, signed);
+      const parsed = parseValue(text(cell), cell.base, bits);
       if (parsed === null) return { invalid: cell.address };
       values.push(parsed);
     }
@@ -393,9 +413,9 @@ export function collectWrite(
 }
 
 /** Campo em branco não é erro (ainda não foi preenchido); só o que foi digitado e não vale. */
-export function inputValid(cell: Cell, raw: string, bits: boolean, signed: boolean): boolean {
+export function inputValid(cell: Cell, raw: string, bits: boolean): boolean {
   if (!raw.trim() || cell.converter !== undefined) return true; // o encode do script valida
-  return cell.base === 'float' ? parseFloat32(raw) !== null : parseValue(raw, cell.base, bits, signed) !== null;
+  return cell.base === 'float' ? parseFloat32(raw) !== null : parseValue(raw, cell.base, bits) !== null;
 }
 
 /** Mensagem se não der para usar `base` em `address` (o registrador já é a 2ª metade de um float,

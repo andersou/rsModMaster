@@ -72,7 +72,6 @@ const [form, setForm] = createStore({
   format: 'dec' as Base,
   /** converter usado como formato padrão ('' = o `format` acima) */
   converter: '',
-  signed: false,
 });
 
 const [connected, setConnected] = createSignal<Mode | null>(null);
@@ -172,7 +171,6 @@ const grid = createMemo<Grid>(() => ({
   count: quantity(),
   bits: spec().bits,
   write: spec().write,
-  signed: form.signed && form.format === 'dec' && !form.converter,
   defaultBase: form.format,
   defaultConverter: form.converter,
   defaultEndian: toEndian(settings.floatEndian),
@@ -344,7 +342,7 @@ async function writeValues(): Promise<number[] | undefined | null> {
     toast(t('store.floatNeedsFc10'), 'warning');
     return null;
   }
-  const result = collectWrite(rows(), cellText, spec().bits, grid().signed, encoded);
+  const result = collectWrite(rows(), cellText, spec().bits, encoded);
   if ('invalid' in result) {
     setInvalidCell(result.invalid);
     toast(t('store.invalidWrite'), 'danger');
@@ -445,7 +443,7 @@ export const app = {
       converter: conv ?? (own === undefined && form.converter ? form.converter : null),
     };
   },
-  /** Formato padrão como no menu: 'dec' | 'bin' | 'hex' | 'float:N' (ordem de bytes) | 'conv:id'. */
+  /** Formato padrão: um `FormatOption.value` ('int' | 'dec' | 'bin' | 'hex' | 'float:N') ou 'conv:id'. */
   defaultFormat: () => (form.converter ? `conv:${form.converter}` : form.format === 'float' ? `float:${toEndian(settings.floatEndian)}` : form.format),
   setDefaultFormat(value: string) {
     const [kind, arg] = value.split(':');
@@ -642,6 +640,18 @@ export const app = {
     void persist();
   },
 
+  /** registradores com formato, ordem de float ou converter próprio */
+  hasFormats: () => [settings.registerFormats, settings.registerFloatEndians, settings.registerConverters].some((m) => Object.keys(m ?? {}).length > 0),
+  /** Tira o formato, a ordem do float e o converter de todos os registradores (labels e gráfico ficam). */
+  clearFormats() {
+    const owned = new Set([...Object.keys(settings.registerFormats ?? {}), ...Object.keys(settings.registerConverters ?? {})]);
+    for (const address of owned) resetColumn(chart, Number(address));
+    setSettings('registerFormats', reconcile({}));
+    setSettings('registerFloatEndians', reconcile({}));
+    setSettings('registerConverters', reconcile({}));
+    void persist();
+    toast(t('registers.formatsCleared'));
+  },
   resetFormat(address: number) {
     resetColumn(chart, address);
     setSettings('registerConverters', String(address), undefined!);

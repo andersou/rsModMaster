@@ -30,7 +30,7 @@ export interface Settings {
   functionCode: number;
   startAddr: number;
   noOfRegs: number;
-  /** índice do qModMaster: 0 Hex, 1 Dec, 2 Bin, 3 Float */
+  /** índice do qModMaster: 0 Hex, 1 UInt16, 2 Bin, 3 Float; 4 Int16 */
   defaultBase: number;
   floatEndian: number;
   /** custom converter usado como formato padrão da tabela ('' = nenhum) */

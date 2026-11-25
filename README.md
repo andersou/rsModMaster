@@ -21,7 +21,7 @@ TOML versionado. O núcleo é Rust, a janela é Tauri 2 e a tela é SolidJS.
 | **Protocolos** | Modbus RTU (serial, CRC) e Modbus TCP (MBAP), implementados à mão no núcleo |
 | **Funções Modbus** | FC 01, 02, 03, 04 (leitura), 05, 06, 0F e 10 (escrita); FC 11 (Report Slave ID) no **Tools** |
 | **Tabela** | 10 colunas; na escrita, cada célula vira um campo |
-| **Formatos** | Bin, Dec (com ou sem sinal), Hex e Float de 32 bits em 4 ordens de byte, por registrador ou para a tabela inteira |
+| **Formatos** | Int16, UInt16, Bin, Hex e Float de 32 bits em 4 ordens de byte, por registrador ou para a tabela inteira |
 | **Converters** | scripts Lua que transformam registradores em texto (e de volta), editados dentro do app |
 | **Scan** | leitura contínua no intervalo do campo **Scan Rate (ms)** (mínimo 50 ms) |
 | **Gráfico** | até 8 registradores ao longo do tempo, com zoom e janelas de 30 s a tudo |
@@ -113,12 +113,13 @@ nele:
 
 ![Menu de contexto do registrador 6: label "Temperature", Show in chart, formatos Dec/Bin/Hex/Float, converters e Reset to default](docs/images/context-menu.png)
 
-- **Dec**, **Bin**, **Hex** ou **Float** de 32 bits nas 4 ordens de byte do libmodbus: ABCD (BE_BE),
+- **Int16** (com sinal), **UInt16**, **Bin** (`00000101 00010011`), **Hex** (`0x00FF`) ou **Float** de 32
+  bits nas 4 ordens de byte do libmodbus: ABCD (BE_BE),
   DCBA (LE_LE), BADC (BE_LE) e CDAB (LE_BE). A ordem marcada como `default` é a **Float Byte Order**
   das configurações.
 - O float ocupa dois registradores: o primeiro mostra o valor e o segundo mostra `—`. Escrever um
   float exige FC 10, e uma escrita que começaria na 2ª metade de um float é recusada.
-- **Signed** (ao lado do Default Format, só em Dec) mostra e aceita valores com sinal.
+- O **Default Format** oferece os mesmos formatos (e converters) do menu, na mesma ordem.
 - Registradores com formato próprio ganham um `*` no canto; **Reset to default** volta ao formato da
   tabela.
 - O campo no topo do menu é o **label** do registrador (até 32 caracteres): aparece no tooltip da
@@ -271,7 +272,7 @@ defaultConverter = "int16_div10"
 
 | campo | conteúdo |
 |---|---|
-| `format` | formato do endereço: 2 Bin, 10 Dec, 16 Hex, 3 Float |
+| `format` | formato do endereço: -10 Int16, 10 UInt16, 2 Bin, 16 Hex, 3 Float |
 | `floatEndian` | ordem de bytes do float |
 | `converter` | id do custom converter (nome do `.lua`) |
 | `label` | nome do registrador, até 32 caracteres |

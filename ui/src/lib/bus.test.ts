@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { type FrameFormat, frameRegisters, frameValues, functionText, valuesText } from './bus';
+import { type FrameFormat, frameRegisters, frameValues, functionText, type ValueEntry, valueEntries, type ValueMode } from './bus';
 
 const format: FrameFormat = {
   bits: false,
   write: false,
-  signed: false,
   defaultBase: 'dec',
   defaultEndian: 0,
   formats: { 11: 'float', 13: 'hex' },
@@ -32,11 +31,13 @@ describe('bus monitor', () => {
     // 10 = 7, 11..12 = float 1.5 (0x3FC0 0x0000), 13 = 255 em hex
     const values = frameValues('7, 16320, 0, 255');
     const regs = frameRegisters(fc03(8), 10, format);
-    expect(valuesText(values, 'dec', regs)).toBe('7, 16320, 0, 255');
-    expect(valuesText(values, 'hex', regs)).toBe('0x0007, 0x3FC0, 0x0000, 0x00FF');
-    expect(valuesText(values, 'custom', regs)).toBe('10: 7, 11: 1.5, 13: 00ff'); // como a célula da tabela
-    // sem registradores (bobinas, endereço desconhecido), Custom cai em decimal
-    expect(valuesText(values, 'custom', null)).toBe('7, 16320, 0, 255');
-    expect(valuesText([1, 255], 'hex', null)).toBe('0x01, 0xFF');
+    const show = (vals: number[], mode: ValueMode, r = regs) =>
+      valueEntries(vals, mode, r).map((e: ValueEntry) => (e.address === undefined ? e.text : `${e.address}=${e.text}`));
+    expect(show(values, 'dec')).toEqual(['10=7', '11=16320', '12=0', '13=255']);
+    expect(show(values, 'hex')).toEqual(['10=0x0007', '11=0x3FC0', '12=0x0000', '13=0x00FF']);
+    expect(show(values, 'custom')).toEqual(['10=7', '11=1.5', '13=0x00FF']); // como a célula da tabela
+    // sem registradores (bobinas, endereço desconhecido): sem endereço, Custom cai em decimal
+    expect(show(values, 'custom', null)).toEqual(['7', '16320', '0', '255']);
+    expect(show([1, 255], 'hex', null)).toEqual(['0x0001', '0x00FF']);
   });
 });

@@ -62,7 +62,6 @@ export const pt: Dict = {
     float: 'Float {{ order }}',
     isDefault: ' · padrão',
     converters: 'Converters',
-    signed: 'Com sinal',
   },
   functions: {
     f01: 'Ler bobinas',
@@ -91,6 +90,11 @@ export const pt: Dict = {
     scan: 'Scan',
     stop: 'Parar',
     clearTable: 'Limpar tabela',
+    clearSeries: 'Limpar séries',
+    clearOptions: 'Mais opções de limpar',
+    clearFormats: 'Limpar formatos',
+    clearFormatsHint: 'Tira o formato, a ordem de bytes do float e o converter de todos os registradores (labels e gráfico ficam)',
+    formatsCleared: 'Formatos limpos',
     address: 'Endereço: {{ address }}',
   },
   menu: {
@@ -135,6 +139,8 @@ export const pt: Dict = {
     bus: 'Monitor do barramento',
     close: 'Fechar (Esc)',
     closeLabel: 'Fechar o painel',
+    resize: 'Redimensionar o painel',
+    resizeHint: 'Arraste para redimensionar · clique duplo volta à altura padrão',
   },
   log: {
     search: 'Buscar no log',
@@ -166,6 +172,8 @@ export const pt: Dict = {
     saveLabel: 'Salvar os quadros',
     saveTitle: 'Salvar os quadros do monitor do barramento',
     saved: 'Salvo em {{ path }}',
+    copy: 'Copiar os quadros',
+    copied: 'Quadros copiados',
     clear: 'Limpar os quadros',
     list: 'Quadros brutos',
     emptyTitle: 'Nenhum quadro ainda',

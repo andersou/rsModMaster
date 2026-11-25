@@ -1,6 +1,6 @@
 // Bus monitor: nome da função e os valores do quadro em Dec, Hex ou no formato da tabela (Custom).
 import { t, tk } from '../i18n';
-import { buildRows, type Converted, type Grid } from './registers';
+import { buildRows, type Converted, formatValue, type Grid } from './registers';
 
 export type ValueMode = 'dec' | 'hex' | 'custom';
 
@@ -47,11 +47,15 @@ export function customRows(values: readonly number[], regs: FrameRegisters, conv
     .filter((c) => c.kind === 'value');
 }
 
-export function valuesText(values: readonly number[], mode: ValueMode, regs: FrameRegisters | null, converted?: Record<number, Converted>): string {
-  if (mode === 'custom' && regs) return customRows(values, regs, converted).map((c) => `${c.address}: ${c.text}`).join(', ');
-  if (mode === 'hex') {
-    const digits = regs || values.some((v) => v > 0xff) ? 4 : 2;
-    return values.map((v) => `0x${v.toString(16).toUpperCase().padStart(digits, '0')}`).join(', ');
-  }
-  return values.join(', ');
+/** Um valor do quadro; `address` (da tabela) quando se sabe qual registrador é. */
+export interface ValueEntry {
+  address?: number;
+  text: string;
+}
+
+/** Dec e Hex: um por registrador (Hex como a tabela, `0x00FF`); Custom: uma por célula da tabela
+ *  (um float ocupa dois registradores). */
+export function valueEntries(values: readonly number[], mode: ValueMode, regs: FrameRegisters | null, converted?: Record<number, Converted>): ValueEntry[] {
+  if (mode === 'custom' && regs) return customRows(values, regs, converted).map((c) => ({ address: c.address, text: c.text }));
+  return values.map((v, i) => ({ address: regs ? regs.start + i : undefined, text: mode === 'hex' ? formatValue(v, 'hex', false) : String(v) }));
 }

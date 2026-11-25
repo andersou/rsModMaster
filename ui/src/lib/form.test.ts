@@ -23,6 +23,8 @@ describe('campos da tela', () => {
 
   it('alternar Dec/Hex converte o texto, não reinterpreta', () => {
     expect(parseAddress('500', false)).toBe(500);
+    expect(parseAddress('0x1F4', true)).toBe(500);
+    expect(parseAddress('0x', true)).toBeNull();
     expect(convertAddress('500', false)).toBe('1F4');
     expect(convertAddress('1F4', true)).toBe('500');
     expect(convertAddress('zz', false)).toBe('zz');

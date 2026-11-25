@@ -185,11 +185,6 @@ export function ChartView() {
           </button>
         </Show>
         <span class="context">{live() ? t('chart.dragToZoom') : t('chart.paused')}</span>
-        <span class="spacer" />
-        <button class="btn ghost small" type="button" onClick={app.clearChart}>
-          <Icon name="eraser" />
-          {t('common.clear')}
-        </button>
       </div>
       <div class="chart-body">
         <div class="chart-plot" ref={host}>

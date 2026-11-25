@@ -36,12 +36,12 @@ pub struct Settings {
     pub function_code: i32,
     pub start_addr: i32,
     pub no_of_regs: i32,
-    /// Formato padrão no índice do qModMaster: 0 = Hex, 1 = Dec, 2 = Bin, 3 = Float.
+    /// Formato padrão no índice do qModMaster: 0 = Hex, 1 = UInt16, 2 = Bin, 3 = Float; 4 = Int16.
     pub default_base: i32,
     pub float_endian: i32,
     /// Custom converter usado como formato padrão da tabela (vazio = nenhum).
     pub default_converter: String,
-    /// Formato por endereço, quando difere do padrão (2 = Bin, 10 = Dec, 16 = Hex, 3 = Float).
+    /// Formato por endereço, quando difere do padrão (2 = Bin, 10 = UInt16, -10 = Int16, 16 = Hex, 3 = Float).
     pub register_formats: BTreeMap<i64, i32>,
     pub register_float_endians: BTreeMap<i64, i32>,
     /// Custom converter por endereço inicial (id = nome do arquivo `.lua`).
@@ -136,7 +136,7 @@ const REGISTER_MAPS: [&str; 5] = [
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct Register {
-    /// 2 = Bin, 10 = Dec, 16 = Hex, 3 = Float.
+    /// 2 = Bin, 10 = UInt16, -10 = Int16, 16 = Hex, 3 = Float.
     #[serde(skip_serializing_if = "Option::is_none")]
     format: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
